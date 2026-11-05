@@ -1,11 +1,45 @@
 /* Motorvärmare Lovelace card. No external dependencies. */
-const MV_DAYS = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"];
+const MV_DAYS = {sv:["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"], en:["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]};
+const MV_I18N = {
+  sv:{choose:"Välj bilens statusentitet i kortets inställningar.", noStatus:"Status otillgänglig", on:"På", off:"Av", unknown:"Okänd", heater:"Värmare", departure:"Nästa avresa", plannedStart:"Planerad start", temperature:"Utetemperatur", duration:"Gångtid", from:"Avresa från", runNow:"Starta nu", stopNow:"Stoppa nu", plannedStop:"Planerat stopp", owned:"Styrd av Motorvärmare", external:"Brytaren var redan på och styrs separat.", autoOff:"Stängs av automatiskt efter beräknad gångtid.", unknownSwitch:"Brytarens tillstånd är inte tillgängligt.", seven:"Kommande 7 dagar", estimate:"Beräknade tider utifrån aktuell utetemperatur. Starttiden kan ändras när temperaturen ändras.", updateCalendar:"Uppdatera integrationen för att visa kalendern.", updateAdd:"Uppdatera integrationen för att lägga till avresor i kalendern.", today:"I dag", tomorrow:"I morgon", add:"Lägg till", addDay:"Lägg till avresa", noDeparture:"Ingen avresa", noHeat:"Ingen värmning", depShort:"avresa", startShort:"Start", stopShort:"av", missingStart:"Starttid saknas", remove:"Ta bort", removeDeparture:"Ta bort avresa", cancel:"Avbryt", depTime:"Avresetid", single:"Enstaka avresa", dateTime:"Datum och tid", save:"Spara", clear:"Rensa", weekly:"Veckoschema", hide:"Dölj", show:"Visa", enable:"Aktivera", unavailable:"Ej tillgänglig", missingEntities:"Bilens entiteter kunde inte hittas. Kontrollera att integrationen har uppdaterats och startats om.", configBefore:"Kalender, brytare och temperatur ändras i ", configLink:"integrationens inställningar", configAfter:".", chooseDate:"Välj datum och tid för avresan", future:"Välj en framtida avresetid", chooseTime:"Välj en avresetid", actionError:"Kunde inte utföra åtgärden", cardTitle:"Kortets namn", statusEntity:"Bilens statusentitet", editorHint:"Välj bilens statusentitet. Kortet hittar bilens övriga entiteter automatiskt.", cardDescription:"Avresetider och veckoschema för motorvärmaren", addLabel:"Lägg till avresa"},
+  en:{choose:"Select the car's status entity in the card settings.", noStatus:"Status unavailable", on:"On", off:"Off", unknown:"Unknown", heater:"Heater", departure:"Next departure", plannedStart:"Planned start", temperature:"Outdoor temperature", duration:"Heating time", from:"Departure from", runNow:"Start now", stopNow:"Stop now", plannedStop:"Planned stop", owned:"Controlled by Motorvärmare", external:"The switch was already on and is controlled separately.", autoOff:"Turns off automatically after the calculated heating time.", unknownSwitch:"The switch state is unavailable.", seven:"Next 7 days", estimate:"Times are estimated using the current outdoor temperature. The start time can change with temperature.", updateCalendar:"Update the integration to show the calendar.", updateAdd:"Update the integration to add calendar departures.", today:"Today", tomorrow:"Tomorrow", add:"Add", addDay:"Add departure", noDeparture:"No departure", noHeat:"No heating", depShort:"departure", startShort:"Start", stopShort:"off", missingStart:"Start time unavailable", remove:"Remove", removeDeparture:"Remove departure", cancel:"Cancel", depTime:"Departure time", single:"One-time departure", dateTime:"Date and time", save:"Save", clear:"Clear", weekly:"Weekly schedule", hide:"Hide", show:"Show", enable:"Enable", unavailable:"Unavailable", missingEntities:"The car's entities could not be found. Check that the integration has been updated and Home Assistant restarted.", configBefore:"Change the calendar, switch and temperature sensor in the ", configLink:"integration settings", configAfter:".", chooseDate:"Choose a departure date and time", future:"Choose a future departure time", chooseTime:"Choose a departure time", actionError:"Could not complete the action", cardTitle:"Card title", statusEntity:"Car status entity", editorHint:"Select the car's status entity. The card finds its other entities automatically.", cardDescription:"Departure times and weekly schedule for the engine heater", addLabel:"Add departure"}
+};
+MV_I18N.sv.suppressed = "Avstängd för den här avresan";
+MV_I18N.en.suppressed = "Turned off for this departure";
+MV_I18N.sv.selectEntity = "Välj entitet"; MV_I18N.en.selectEntity = "Select entity";
+MV_I18N.sv.missing = "saknas"; MV_I18N.en.missing = "missing";
+MV_I18N.sv.from = "Källa:"; MV_I18N.en.from = "Source:";
+MV_I18N.sv.eventSummary = "Avresa"; MV_I18N.en.eventSummary = "Departure";
+MV_I18N.sv.estimate = "Individuellt beräknade tider utifrån aktuell utetemperatur. Tiderna kan ändras när temperaturen ändras.";
+MV_I18N.en.estimate = "Individual estimates based on the current outdoor temperature. Times can change with temperature.";
+MV_I18N.sv.overlap = "Överlappande tider: värmaren kan stängas av och starta igen mellan avresorna.";
+MV_I18N.en.overlap = "Overlapping times: the heater may turn off and restart between departures.";
+MV_I18N.sv.runtimeFor = "Värmer i"; MV_I18N.en.runtimeFor = "Heats for";
+MV_I18N.sv.runtimeOff = "stängs sedan av automatiskt."; MV_I18N.en.runtimeOff = "then turns off automatically.";
+MV_I18N.sv.noRuntime = "Formeln ger ingen uppvärmning vid den här temperaturen.";
+MV_I18N.en.noRuntime = "The formula gives no heating time at this temperature.";
+MV_I18N.sv.tempUnavailable = "Utetemperaturen är inte tillgänglig.";
+MV_I18N.en.tempUnavailable = "Outdoor temperature is unavailable.";
+const MV_EN_STATES = {"Väntar":"Waiting", "Väntar på start":"Waiting to start", "Värmer":"Heating", "Avstängd":"Off", "Ingen avresa":"No departure", "Ingen uppvärmning behövs":"No heating needed", "Fel":"Error", "Brytaren var redan på":"Switch was already on", "Manuellt avstängd för denna avresa":"Manually turned off for this departure", "Kalender":"Calendar", "Manuell":"Manual", "Veckoschema":"Weekly schedule", "Planerad":"Scheduled", "Lokal":"Local", "Starta nu":"Start now"};
+const MV_EN_ERRORS = {"Brytaren är inte tillgänglig":"The switch is unavailable", "Värmaren är redan på eller styrs redan av integrationen":"The heater is already on or controlled by the integration", "Utetemperaturen är inte tillgänglig":"Outdoor temperature is unavailable", "Formeln ger ingen uppvärmning vid den här temperaturen":"The formula gives no heating time at this temperature", "Integrationen styr ingen pågående uppvärmning":"The integration is not controlling an active heating session", "Kunde inte slå på brytaren":"Could not turn on the switch", "Kunde inte stänga av brytaren; försöker igen":"Could not turn off the switch; retrying", "Kunde inte bekräfta att brytaren är av; försöker igen":"Could not confirm that the switch is off; retrying", "Brytarens tillstånd är okänt":"The switch state is unknown", "Utetemperaturen är inte tillgänglig eller saknar temperaturenhet":"Outdoor temperature is unavailable or has no temperature unit", "Kalendern svarade inte i tid; försöker igen":"Calendar timed out; retrying", "Kalendern kan inte läsas; se Home Assistants logg":"Calendar could not be read; check the Home Assistant log", "Kalendern kan inte läsas":"Calendar could not be read", "Kunde inte slå på brytaren; försöker stänga av":"Could not turn on the switch; trying to turn it off", "Ett oväntat fel uppstod; kontrollera loggen":"Unexpected error; check the log"};
+const MV_STATUS_KEYS = {waiting:"Väntar", error:"Fel", heating:"Värmer", stopped:"Avstängd", no_departure:"Ingen avresa", no_heating_needed:"Ingen uppvärmning behövs", waiting_to_start:"Väntar på start", already_on:"Brytaren var redan på", manually_stopped:"Manuellt avstängd för denna avresa"};
 const mvEscape = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const mvUsable = (s) => s && !["unknown", "unavailable"].includes(s.state);
+const mvLang = (hass) => String(hass?.locale?.language || hass?.language || "sv").toLowerCase().startsWith("sv") ? "sv" : "en";
+const mvText = (hass, key) => MV_I18N[mvLang(hass)][key] || key;
+const mvStateText = (hass, value) => {
+  const swedish = MV_STATUS_KEYS[value] || value;
+  return mvLang(hass) === "en" ? (MV_EN_STATES[swedish] || swedish) : swedish;
+};
+const mvErrorText = (hass, value) => {
+  if (mvLang(hass) !== "en" || typeof value !== "string") return value;
+  return Object.entries(MV_EN_ERRORS).sort((a,b)=>b[0].length-a[0].length).reduce((text,[sv,en])=>text.split(sv).join(en),value);
+};
 
 class MotorvarmareCard extends HTMLElement {
   constructor() {
     super(); this.attachShadow({mode:"open"}); this._config = {}; this._showWeek = false; this._draft = null; this._pending = false;
+    this._selectedDay = null; this._calendarTime = "07:00";
     this.shadowRoot.addEventListener("focusout", () => setTimeout(() => {
       const focused = this.shadowRoot.activeElement;
       if (this._refreshAfterFocus && (!focused || !["INPUT", "SELECT"].includes(focused.tagName))) {
@@ -19,7 +53,7 @@ class MotorvarmareCard extends HTMLElement {
   getGridOptions() { return {columns:6, min_columns:3, rows:"auto"}; }
   setConfig(config) {
     if (!config || typeof config !== "object") throw new Error("Ogiltig konfiguration");
-    if (this._config.status_entity !== config.status_entity) this._draft = null;
+    if (this._config.status_entity !== config.status_entity) { this._draft = null; this._selectedDay = null; }
     this._config = {...config}; this._render();
   }
   set hass(value) {
@@ -35,7 +69,10 @@ class MotorvarmareCard extends HTMLElement {
       manual_entity:auto.manual_departure,
       clear_entity:auto.clear_departure,
       switch_entity:auto.heater_switch,
-      weekly:MV_DAYS.map((_, i) => ({time:auto.weekly_times?.[i], enabled:auto.weekly_enabled?.[i]})),
+      calendar:auto.calendar,
+      start_now:auto.start_now,
+      stop_now:auto.stop_now,
+      weekly:MV_DAYS.sv.map((_, i) => ({time:auto.weekly_times?.[i], enabled:auto.weekly_enabled?.[i]})),
     };
   }
   _timeZone() { return this._hass?.config?.time_zone || undefined; }
@@ -43,7 +80,7 @@ class MotorvarmareCard extends HTMLElement {
     if (!value) return "–";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "–";
-    return new Intl.DateTimeFormat("sv-SE", {timeZone:this._timeZone(), weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}).format(date);
+    return new Intl.DateTimeFormat(mvLang(this._hass) === "sv" ? "sv-SE" : "en-GB", {timeZone:this._timeZone(), weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}).format(date);
   }
   _inputDate(value) {
     if (!value || ["unknown", "unavailable"].includes(value)) return "";
@@ -51,70 +88,135 @@ class MotorvarmareCard extends HTMLElement {
     const p = Object.fromEntries(new Intl.DateTimeFormat("sv-SE", {timeZone:this._timeZone(), year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hourCycle:"h23"}).formatToParts(date).filter(x=>x.type!=="literal").map(x=>[x.type,x.value]));
     return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
   }
-  async _call(domain, service, data) {
+  _dayKey(value) {
+    return this._inputDate(value).slice(0, 10);
+  }
+  _dayKeys() {
+    const today = this._dayKey(new Date().toISOString());
+    if (!today) return [];
+    const [y,m,d] = today.split("-").map(Number);
+    return Array.from({length:7}, (_,i) => new Date(Date.UTC(y,m-1,d+i,12)).toISOString().slice(0,10));
+  }
+  _dayLabel(key, i) {
+    const date = new Date(`${key}T12:00:00Z`);
+    const text = new Intl.DateTimeFormat(mvLang(this._hass) === "sv" ? "sv-SE" : "en-GB", {timeZone:"UTC", weekday:"short", day:"numeric", month:"short"}).format(date);
+    return i === 0 ? `${mvText(this._hass,"today")} · ${text}` : i === 1 ? `${mvText(this._hass,"tomorrow")} · ${text}` : text;
+  }
+  _clock(value, day) {
+    if (!value) return "–";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "–";
+    const options = {timeZone:this._timeZone(), hour:"2-digit", minute:"2-digit", hourCycle:"h23"};
+    if (this._dayKey(value) !== day) { options.weekday = "short"; options.day = "numeric"; options.month = "short"; }
+    return new Intl.DateTimeFormat(mvLang(this._hass) === "sv" ? "sv-SE" : "en-GB", options).format(date);
+  }
+  async _perform(action) {
     if (this._pending) return false;
     this._pending = true; this._actionError = null;
     this._render();
     let ok = false;
-    try { await this._hass.callService(domain, service, data); ok = true; }
-    catch (err) { this._actionError = err?.message || "Kunde inte utföra åtgärden"; }
+    try { await action(); ok = true; }
+    catch (err) { this._actionError = mvErrorText(this._hass, err?.message) || mvText(this._hass,"actionError"); }
     finally { this._pending = false; this._render(); }
     return ok;
   }
+  async _call(domain, service, data) { return this._perform(() => this._hass.callService(domain, service, data)); }
+  async _callWS(data) { return this._perform(() => this._hass.callWS(data)); }
   _render() {
     if (!this.shadowRoot) return;
     const h = this._hass, cfg = this._config;
     if (!h) { this.shadowRoot.innerHTML = ""; return; }
+    const t = key => mvText(h,key), days = MV_DAYS[mvLang(h)];
     const status = h.states[cfg.status_entity];
     if (!cfg.status_entity || !status) {
-      this.shadowRoot.innerHTML = `<ha-card><div style="padding:20px">Välj bilens statusentitet i kortets inställningar.</div></ha-card>`;
+      this.shadowRoot.innerHTML = `<ha-card><div style="padding:20px">${mvEscape(t("choose"))}</div></ha-card>`;
       return;
     }
     const e = this._entities(), a = status.attributes || {}, manual = h.states[e.manual_entity];
     const sw = h.states[e.switch_entity];
-    const statusText = mvUsable(status) ? status.state : "Status otillgänglig";
-    const heating = sw?.state === "on" ? "På" : sw?.state === "off" ? "Av" : "Okänd";
+    const statusText = mvUsable(status) ? mvStateText(h,status.state) : t("noStatus");
+    const heating = sw?.state === "on" ? t("on") : sw?.state === "off" ? t("off") : t("unknown");
     const title = cfg.title || status.attributes?.friendly_name?.replace(/\s+status$/i, "") || "Motorvärmare";
-    const temperature = typeof a.temperature === "number" && Number.isFinite(a.temperature) ? `${new Intl.NumberFormat("sv-SE", {maximumFractionDigits:1}).format(a.temperature)} °C` : "–";
+    const temperature = typeof a.temperature === "number" && Number.isFinite(a.temperature) ? `${new Intl.NumberFormat(mvLang(h) === "sv" ? "sv-SE" : "en-GB", {maximumFractionDigits:1}).format(a.temperature)} °C` : "–";
     const weekRows = e.weekly.map((day, i) => {
       const t = h.states[day.time], s = h.states[day.enabled];
       const availableTime = mvUsable(t), availableSwitch = mvUsable(s) && ["on","off"].includes(s.state);
-      return `<div class="day"><span>${MV_DAYS[i]}</span><input aria-label="${MV_DAYS[i]} avresetid" type="time" data-day-time="${i}" value="${availableTime ? mvEscape(t.state.slice(0,5)) : ""}" ${!availableTime || this._pending ? "disabled" : ""}><label class="day-toggle"><input aria-label="Aktivera ${MV_DAYS[i]}" type="checkbox" data-day-switch="${i}" ${s?.state === "on" ? "checked" : ""} ${!availableSwitch || this._pending ? "disabled" : ""}><span>${availableSwitch ? (s.state === "on" ? "På" : "Av") : "Ej tillgänglig"}</span></label></div>`;
+      return `<div class="day"><span>${days[i]}</span><input aria-label="${days[i]} ${mvText(h,"depTime")}" type="time" data-day-time="${i}" value="${availableTime ? mvEscape(t.state.slice(0,5)) : ""}" ${!availableTime || this._pending ? "disabled" : ""}><label class="day-toggle"><input aria-label="${mvText(h,"enable")} ${days[i]}" type="checkbox" data-day-switch="${i}" ${s?.state === "on" ? "checked" : ""} ${!availableSwitch || this._pending ? "disabled" : ""}><span>${availableSwitch ? (s.state === "on" ? mvText(h,"on") : mvText(h,"off")) : mvText(h,"unavailable")}</span></label></div>`;
     }).join("");
     const manualOk = manual && manual.state !== "unavailable";
     const clear = h.states[e.clear_entity];
     const clearOk = clear && clear.state !== "unavailable";
     const inputValue = this._draft === null ? this._inputDate(manual?.state) : this._draft;
+    const startButton = h.states[e.start_now], stopButton = h.states[e.stop_now];
+    const currentRuntime = Number.isFinite(a.current_duration_minutes) ? a.current_duration_minutes : null;
+    const startOk = startButton && startButton.state !== "unavailable" && sw?.state === "off" && currentRuntime > 0;
+    const stopOk = stopButton && stopButton.state !== "unavailable" && a.owned;
+    const calendar = h.states[e.calendar];
+    const calendarOk = calendar && calendar.state !== "unavailable";
+    const hasSchedule = Array.isArray(a.schedule_7_days);
+    const schedule = hasSchedule ? a.schedule_7_days.filter(item => item && item.departure && !Number.isNaN(new Date(item.departure).getTime())).slice().sort((x,y)=>new Date(x.departure)-new Date(y.departure)) : [];
+    const heatingWindows = schedule.filter(item => !item.suppressed && item.start);
+    const hasOverlap = heatingWindows.some((item,i) => i > 0 && new Date(item.start) < new Date(heatingWindows[i-1].departure));
+    const dayRows = this._dayKeys().map((key,i) => {
+      const items = schedule.filter(item => this._dayKey(item.departure) === key);
+      const entries = items.map(item => {
+        const source = item.source ? mvStateText(h,String(item.source)) : mvStateText(h,"Planerad");
+        const timing = item.suppressed ? `${t("suppressed")} · ${t("depShort")} ${this._clock(item.departure,key)}` : item.start ? `${t("startShort")} ${this._clock(item.start,key)} <span aria-hidden="true">→</span> ${t("stopShort")} ${this._clock(item.departure,key)}` : (item.duration_minutes === 0 ? `${t("noHeat")} · ${t("depShort")} ${this._clock(item.departure,key)}` : `${t("missingStart")} · ${t("depShort")} ${this._clock(item.departure,key)}`);
+        const remove = item.removable === true && item.uid && calendarOk ? `<button class="remove" data-remove-uid="${mvEscape(item.uid)}" aria-label="${t("removeDeparture")} ${mvEscape(this._clock(item.departure,key))}">${t("remove")}</button>` : "";
+        return `<div class="cal-entry"><div><div class="cal-timing">${timing}</div><div class="cal-source">${mvEscape(source)}</div></div>${remove}</div>`;
+      }).join("");
+      const editor = this._selectedDay === key ? `<div class="cal-editor"><label for="calendar-time">${t("depTime")}</label><input id="calendar-time" type="time" value="${mvEscape(this._calendarTime)}" ${this._pending ? "disabled" : ""}><button class="primary" id="add-calendar" ${!calendarOk || this._pending ? "disabled" : ""}>${t("add")}</button><button id="cancel-calendar" ${this._pending ? "disabled" : ""}>${t("cancel")}</button></div>` : "";
+      return `<div class="cal-day"><div class="cal-day-head"><span>${mvEscape(this._dayLabel(key,i))}</span><button class="add-day" data-add-day="${key}" aria-label="${t("addDay")} ${mvEscape(this._dayLabel(key,i))}" ${!calendarOk || this._pending ? "disabled" : ""}>＋ ${t("add")}</button></div>${entries || `<div class="cal-empty">${t("noDeparture")}</div>`}${editor}</div>`;
+    }).join("");
     this.shadowRoot.innerHTML = `
       <style>
         :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif)} *{box-sizing:border-box} ha-card{overflow:hidden} .wrap{padding:20px} .head{display:flex;gap:12px;align-items:center;margin-bottom:20px} .icon{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:rgba(var(--rgb-primary-color,3,169,244),.12);color:var(--primary-color)} ha-icon{--mdc-icon-size:22px}.headtext{flex:1;min-width:0}.title{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status{font-size:13px;color:var(--secondary-text-color);margin-top:2px}.badge{font-size:12px;font-weight:600;padding:6px 10px;border-radius:20px;background:var(--secondary-background-color);color:var(--secondary-text-color);white-space:nowrap}.badge.on{background:rgba(var(--rgb-success-color,67,160,71),.14);color:var(--success-color,#278748)} .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;padding:16px 0;border-top:1px solid var(--divider-color);border-bottom:1px solid var(--divider-color)} .label{font-size:12px;color:var(--secondary-text-color);margin-bottom:3px}.value{font-size:15px;font-weight:500;overflow-wrap:anywhere}.section{margin-top:18px}.sectionhead{font-weight:600;margin-bottom:10px}.manual{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.field{flex:1;min-width:175px}.field label{display:block;font-size:12px;color:var(--secondary-text-color);margin-bottom:5px} input[type=datetime-local],input[type=time]{color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:8px;font:inherit;min-height:40px;max-width:100%} input[type=datetime-local]{width:100%} button{font:500 14px var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif);color:var(--primary-color);background:transparent;border:0;border-radius:8px;min-height:40px;padding:8px 10px;cursor:pointer} button.primary{background:var(--primary-color);color:var(--text-primary-color,#fff)} button:disabled,input:disabled{opacity:.48;cursor:not-allowed} button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.expand{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 0;text-align:left;color:var(--primary-text-color);font-weight:600}.expand .small{font-size:12px;color:var(--primary-color)} .day{display:grid;grid-template-columns:minmax(75px,1fr) auto auto;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--divider-color)} .day input[type=time]{width:100px}.day-toggle{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--secondary-text-color);min-width:50px}.day-toggle input{width:18px;height:18px;accent-color:var(--primary-color)} .notice{font-size:13px;color:var(--error-color,#c62828);margin-top:12px;overflow-wrap:anywhere}.hint{font-size:12px;color:var(--secondary-text-color);margin-top:10px}.actions{display:flex;gap:4px;align-items:center} @media(max-width:350px){.wrap{padding:15px}.day{grid-template-columns:minmax(65px,1fr) auto auto;gap:5px}.day input[type=time]{width:90px}}
+        .quick-actions{display:flex;align-items:center;gap:12px;margin-top:15px;flex-wrap:wrap}.quick-actions .hint{margin:0;flex:1;min-width:150px}.calendar{margin-top:20px}.calendar-title{font-weight:600;margin-bottom:4px}.calendar-subtitle{font-size:12px;color:var(--secondary-text-color);margin-bottom:10px;line-height:1.45}.cal-day{border-top:1px solid var(--divider-color);padding:9px 0}.cal-day-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;text-transform:none}.cal-day-head button{min-height:36px;padding:5px 6px}.cal-empty{font-size:12px;color:var(--secondary-text-color);padding:3px 0}.cal-entry{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.cal-timing{font-size:13px;font-weight:500}.cal-source{font-size:12px;color:var(--secondary-text-color)}.remove{font-size:12px;min-height:36px;color:var(--secondary-text-color);white-space:nowrap}.cal-editor{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}.cal-editor label{font-size:12px;color:var(--secondary-text-color)}.cal-editor input{width:105px}.cal-editor button{padding:6px 9px} .cal-warning{font-size:12px;color:var(--error-color,#c62828);margin-top:8px}
       </style>
       <ha-card><div class="wrap">
-        <div class="head"><div class="icon"><ha-icon icon="mdi:car-defrost-front"></ha-icon></div><div class="headtext"><div class="title">${mvEscape(title)}</div><div class="status">${mvEscape(statusText)}</div></div><span class="badge ${heating === "På" ? "on" : ""}">Värmare ${heating}</span></div>
+        <div class="head"><div class="icon"><ha-icon icon="mdi:car-defrost-front"></ha-icon></div><div class="headtext"><div class="title">${mvEscape(title)}</div><div class="status">${mvEscape(statusText)}</div></div><span class="badge ${sw?.state === "on" ? "on" : ""}">${t("heater")} ${heating}</span></div>
         <div class="stats">
-          <div><div class="label">Nästa avresa</div><div class="value">${mvEscape(this._date(a.next_departure))}</div></div>
-          <div><div class="label">Planerad start</div><div class="value">${mvEscape(this._date(a.planned_start))}</div></div>
-          <div><div class="label">Utetemperatur</div><div class="value">${mvEscape(temperature)}</div></div>
-          <div><div class="label">Gångtid</div><div class="value">${a.next_departure && Number.isFinite(a.duration_minutes) ? `${mvEscape(a.duration_minutes)} min` : "–"}</div></div>
+          <div><div class="label">${t("departure")}</div><div class="value">${mvEscape(this._date(a.next_departure))}</div></div>
+          <div><div class="label">${t("plannedStart")}</div><div class="value">${mvEscape(this._date(a.planned_start))}</div></div>
+          <div><div class="label">${t("temperature")}</div><div class="value">${mvEscape(temperature)}</div></div>
+          <div><div class="label">${t("duration")}</div><div class="value">${currentRuntime !== null ? `${mvEscape(currentRuntime)} min` : a.next_departure && Number.isFinite(a.duration_minutes) ? `${mvEscape(a.duration_minutes)} min` : "–"}</div></div>
         </div>
-        ${a.source ? `<div class="hint">Avresa från ${mvEscape(String(a.source).toLowerCase())}</div>` : ""}
-        ${a.error ? `<div class="notice" role="status">${mvEscape(a.error)}</div>` : ""}
+        ${a.source ? `<div class="hint">${t("from")} ${mvEscape(String(mvStateText(h,a.source)).toLowerCase())}</div>` : ""}
+        ${a.error ? `<div class="notice" role="status">${mvEscape(mvErrorText(h,a.error))}</div>` : ""}
         ${this._actionError ? `<div class="notice" role="alert">${mvEscape(this._actionError)}</div>` : ""}
-        <div class="section"><div class="sectionhead">Enstaka avresa</div><div class="manual"><div class="field"><label for="manual">Datum och tid</label><input id="manual" type="datetime-local" value="${mvEscape(inputValue)}" ${!manualOk || this._pending ? "disabled" : ""}></div><div class="actions"><button class="primary" id="save" ${!manualOk || this._pending ? "disabled" : ""}>Spara</button><button id="clear" ${!clearOk || this._pending ? "disabled" : ""}>Rensa</button></div></div></div>
-        <div class="section"><button class="expand" id="week" aria-expanded="${this._showWeek}"><span>Veckoschema</span><span class="small">${this._showWeek ? "Dölj" : "Visa"}</span></button>${this._showWeek ? weekRows : ""}</div>
-        ${(!e.manual_entity || !e.weekly.some(x=>x.time && x.enabled)) ? `<div class="hint">Bilens entiteter kunde inte hittas. Kontrollera att integrationen har uppdaterats och startats om.</div>` : ""}
-        <div class="hint">Kalender, brytare, temperatur och gångtider ändras i <a href="/config/integrations/integration/motorvarmare" style="color:var(--primary-color)">integrationens inställningar</a>.</div>
+        <div class="quick-actions">${a.owned ? `<button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button><span class="hint">${a.active_until ? `${t("plannedStop")} ${mvEscape(this._date(a.active_until))}` : t("owned")}</span>` : `<button class="primary" id="start-now" ${!startOk || this._pending ? "disabled" : ""}>${t("runNow")}</button><span class="hint">${sw?.state === "on" ? t("external") : sw?.state !== "off" ? t("unknownSwitch") : currentRuntime === null ? t("tempUnavailable") : currentRuntime <= 0 ? t("noRuntime") : `${t("runtimeFor")} ${mvEscape(currentRuntime)} min; ${t("runtimeOff")}`}</span>`}</div>
+        <div class="calendar"><div class="calendar-title">${t("seven")}</div><div class="calendar-subtitle">${t("estimate")}${hasOverlap ? ` ${t("overlap")}` : ""}</div>${hasSchedule ? dayRows : `<div class="cal-warning">${t("updateCalendar")}</div>`}${!calendarOk ? `<div class="hint">${t("updateAdd")}</div>` : ""}</div>
+        <div class="section"><div class="sectionhead">${t("single")}</div><div class="manual"><div class="field"><label for="manual">${t("dateTime")}</label><input id="manual" type="datetime-local" value="${mvEscape(inputValue)}" ${!manualOk || this._pending ? "disabled" : ""}></div><div class="actions"><button class="primary" id="save" ${!manualOk || this._pending ? "disabled" : ""}>${t("save")}</button><button id="clear" ${!clearOk || this._pending ? "disabled" : ""}>${t("clear")}</button></div></div></div>
+        <div class="section"><button class="expand" id="week" aria-expanded="${this._showWeek}"><span>${t("weekly")}</span><span class="small">${this._showWeek ? t("hide") : t("show")}</span></button>${this._showWeek ? weekRows : ""}</div>
+        ${(!e.manual_entity || !e.weekly.some(x=>x.time && x.enabled)) ? `<div class="hint">${t("missingEntities")}</div>` : ""}
+        <div class="hint">${t("configBefore")}<a href="/config/integrations/integration/motorvarmare" style="color:var(--primary-color)">${t("configLink")}</a>${t("configAfter")}</div>
       </div></ha-card>`;
     const manualInput = this.shadowRoot.querySelector("#manual");
     manualInput?.addEventListener("input", (event) => {this._draft = event.target.value;});
     this.shadowRoot.querySelector("#save")?.addEventListener("click", async () => {
       const value = manualInput.value;
-      if (!value) {this._actionError="Välj datum och tid för avresan"; this._render(); return;}
-      if (value <= this._inputDate(new Date().toISOString())) {this._actionError="Välj en framtida avresetid"; this._render(); return;}
+      if (!value) {this._actionError=t("chooseDate"); this._render(); return;}
+      if (value <= this._inputDate(new Date().toISOString())) {this._actionError=t("future"); this._render(); return;}
       this._draft = value;
       if (await this._call("datetime", "set_value", {entity_id:e.manual_entity, datetime:value.length === 16 ? `${value}:00` : value})) {this._draft = null; this._render();}
     });
     this.shadowRoot.querySelector("#clear")?.addEventListener("click", async () => {if (await this._call("button", "press", {entity_id:e.clear_entity})) {this._draft = null; this._render();}});
+    this.shadowRoot.querySelector("#start-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.start_now}));
+    this.shadowRoot.querySelector("#stop-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.stop_now}));
+    this.shadowRoot.querySelectorAll("[data-add-day]").forEach(el => el.addEventListener("click", () => { this._selectedDay=el.dataset.addDay; this._calendarTime="07:00"; this._render(); }));
+    this.shadowRoot.querySelector("#cancel-calendar")?.addEventListener("click", () => { this._selectedDay=null; this._render(); });
+    this.shadowRoot.querySelector("#calendar-time")?.addEventListener("input", event => { this._calendarTime=event.target.value; });
+    this.shadowRoot.querySelector("#add-calendar")?.addEventListener("click", async () => {
+      const value=this.shadowRoot.querySelector("#calendar-time")?.value, key=this._selectedDay;
+      if (!value || !key) { this._actionError=t("chooseTime"); this._render(); return; }
+      const start=`${key}T${value}`;
+      if (start <= this._inputDate(new Date().toISOString())) { this._actionError=t("future"); this._render(); return; }
+      const [y,m,d]=key.split("-").map(Number), [hour,minute]=value.split(":").map(Number);
+      const end=new Date(Date.UTC(y,m-1,d,hour,minute+1)).toISOString().slice(0,19);
+      this._calendarTime=value;
+      if (await this._call("calendar","create_event",{entity_id:e.calendar,summary:t("eventSummary"),start_date_time:`${start}:00`,end_date_time:end})) { this._selectedDay=null; this._render(); }
+    });
+    this.shadowRoot.querySelectorAll("[data-remove-uid]").forEach(el => el.addEventListener("click", () => this._callWS({type:"calendar/event/delete",entity_id:e.calendar,uid:el.dataset.removeUid})));
     this.shadowRoot.querySelector("#week")?.addEventListener("click", () => {this._showWeek = !this._showWeek; this._render();});
     this.shadowRoot.querySelectorAll("[data-day-time]").forEach((el) => el.addEventListener("change", () => {if (el.value) this._call("time", "set_value", {entity_id:e.weekly[Number(el.dataset.dayTime)].time, time:`${el.value}:00`});}));
     this.shadowRoot.querySelectorAll("[data-day-switch]").forEach((el) => el.addEventListener("change", () => this._call("switch", el.checked ? "turn_on" : "turn_off", {entity_id:e.weekly[Number(el.dataset.daySwitch)].enabled})));
@@ -129,14 +231,14 @@ class MotorvarmareCardEditor extends HTMLElement {
   _options(domain, selected) {
     const states = Object.values(this._hass?.states || {}).filter(s=>s.entity_id.startsWith(`${domain}.`) && (s.attributes?.control_entities || s.entity_id === selected));
     const options = states.sort((a,b)=>(a.attributes.friendly_name || a.entity_id).localeCompare(b.attributes.friendly_name || b.entity_id, "sv")).map(s=>`<option value="${mvEscape(s.entity_id)}" ${s.entity_id === selected ? "selected" : ""}>${mvEscape(s.attributes.friendly_name || s.entity_id)} (${mvEscape(s.entity_id)})</option>`);
-    if (selected && !states.some(s=>s.entity_id === selected)) options.unshift(`<option selected value="${mvEscape(selected)}">${mvEscape(selected)} (saknas)</option>`);
-    return `<option value="">Välj entitet</option>${options.join("")}`;
+    if (selected && !states.some(s=>s.entity_id === selected)) options.unshift(`<option selected value="${mvEscape(selected)}">${mvEscape(selected)} (${mvText(this._hass,"missing")})</option>`);
+    return `<option value="">${mvText(this._hass,"selectEntity")}</option>${options.join("")}`;
   }
   _render() {
     if (!this._hass) return;
-    const c = this._config;
+    const c = this._config, t = key => mvText(this._hass,key);
     this.shadowRoot.innerHTML = `<style>:host{display:block} .fields{display:grid;gap:14px} label{display:grid;gap:5px;color:var(--secondary-text-color);font:14px Roboto,system-ui,sans-serif} input,select{font:14px Roboto,system-ui,sans-serif;color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:6px;padding:10px;min-height:42px;width:100%;box-sizing:border-box} p{color:var(--secondary-text-color);font:13px/1.45 Roboto,system-ui,sans-serif;margin:0}</style>
-      <div class="fields"><label>Kortets namn<input id="title" value="${mvEscape(c.title || "")}" placeholder="Motorvärmare"></label><label>Bilens statusentitet<select id="status">${this._options("sensor",c.status_entity)}</select></label><p>Välj bilens statusentitet. Kortet hittar bilens övriga entiteter automatiskt.</p></div>`;
+      <div class="fields"><label>${t("cardTitle")}<input id="title" value="${mvEscape(c.title || "")}" placeholder="Motorvärmare"></label><label>${t("statusEntity")}<select id="status">${this._options("sensor",c.status_entity)}</select></label><p>${t("editorHint")}</p></div>`;
     this.shadowRoot.querySelector("#title").addEventListener("change", e=>this._set("title",e.target.value));
     this.shadowRoot.querySelector("#status").addEventListener("change", e=>this._set("status_entity",e.target.value));
   }
@@ -145,4 +247,4 @@ class MotorvarmareCardEditor extends HTMLElement {
 if (!customElements.get("motorvarmare-card")) customElements.define("motorvarmare-card", MotorvarmareCard);
 if (!customElements.get("motorvarmare-card-editor")) customElements.define("motorvarmare-card-editor", MotorvarmareCardEditor);
 window.customCards = window.customCards || [];
-if (!window.customCards.some(c=>c.type === "motorvarmare-card")) window.customCards.push({type:"motorvarmare-card", name:"Motorvärmare", description:"Avresetider och veckoschema för motorvärmaren", preview:true});
+if (!window.customCards.some(c=>c.type === "motorvarmare-card")) window.customCards.push({type:"motorvarmare-card", name:"Motorvärmare", description:"Motorvärmare / Engine heater schedule", preview:true});
