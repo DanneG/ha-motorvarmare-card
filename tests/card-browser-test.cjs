@@ -7,13 +7,15 @@ async function main() {
   const browser = await chromium.launch({ headless:true, executablePath:process.env.MOTORVARMARE_BROWSER || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' });
   try {
     const page = await browser.newPage();
+    // Keep the calendar dates and Stockholm UTC offset deterministic year-round.
+    await page.clock.setFixedTime(new Date('2026-11-05T12:00:00Z'));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.setContent('<!doctype html><html><body></body></html>');
-    await page.setViewportSize({width:640,height:1100});
-    await page.addStyleTag({content:`body{margin:0;background:#f1f5f8;padding:24px;font-family:Roboto,Arial,sans-serif} motorvarmare-card{--primary-text-color:#162f3c;--secondary-text-color:#5b7180;--card-background-color:#fff;--secondary-background-color:#eef4f6;--divider-color:#dce6eb;--primary-color:#087c99;--text-primary-color:#fff;display:block;max-width:560px;margin:auto}`});
+    await page.setViewportSize({width:1360,height:1400});
+    await page.addStyleTag({content:`body{margin:0;background:#f1f5f8;padding:24px;font-family:Roboto,Arial,sans-serif} motorvarmare-card{--primary-text-color:#162f3c;--secondary-text-color:#5b7180;--card-background-color:#fff;--secondary-background-color:#eef4f6;--divider-color:#dce6eb;--primary-color:#087c99;--text-primary-color:#fff;display:block;max-width:1120px;margin:auto}`});
     await page.evaluate(()=>{
-      customElements.define('ha-card',class extends HTMLElement{connectedCallback(){Object.assign(this.style,{display:'block',background:'#fff',borderRadius:'15px',boxShadow:'0 3px 20px #173a4c1a'});}});
+      customElements.define('ha-card',class extends HTMLElement{connectedCallback(){Object.assign(this.style,{display:'block',background:'var(--card-background-color)',borderRadius:'15px',boxShadow:'0 3px 20px #173a4c1a'});}});
       customElements.define('ha-icon',class extends HTMLElement{connectedCallback(){this.textContent='🚗';}});
     });
     await page.addScriptTag({path:path.join(__dirname, '..', 'dist', 'ha-motorvarmare-card.js')});
@@ -44,7 +46,7 @@ async function main() {
       const tomorrow=card._dayKeys()[1], fourth=card._dayKeys()[3], fifth=card._dayKeys()[4];
       states['sensor.car_status'].attributes.schedule_7_days=[
         {departure:`${tomorrow}T09:30:00Z`,start:`${tomorrow}T08:54:00Z`,source:'Planerad',uid:'one',removable:true,duration_minutes:36},
-        {departure:`${tomorrow}T15:30:00Z`,start:`${tomorrow}T14:54:00Z`,source:'Kalender',duration_minutes:36},
+        {departure:`${tomorrow}T12:30:00Z`,start:`${tomorrow}T11:54:00Z`,source:'Kalender',duration_minutes:36},
         {departure:`${fourth}T06:30:00Z`,start:`${fourth}T05:54:00Z`,source:'Veckoschema',duration_minutes:36},
         {departure:`${fifth}T07:00:00Z`,start:`${fifth}T06:24:00Z`,source:'Planerad',uid:'two',removable:true,duration_minutes:36},
       ];
@@ -57,8 +59,10 @@ async function main() {
     assert.match(await card.locator('.wrap').innerText(),/Väntar på start/);
     assert.match(await card.locator('.wrap').innerText(),/Värmer i 36 min/);
     assert.equal(await card.locator('.cal-day').count(),7);
-    assert.equal(await card.locator('.cal-entry').count(),4);
-    assert.equal(await card.locator('[data-remove-uid]').count(),2);
+    assert.equal(await card.locator('.cal-event').count(),4);
+    assert.ok(await card.locator('[data-remove-uid]').count() >= 2,'Local departures remain individually removable');
+    assert.ok(await card.locator('.cal-scroll').evaluate(el=>el.scrollTop) > 0,'Calendar initially shows the relevant hours even when configured before attachment');
+    if (process.env.MOTORVARMARE_PREVIEW_DARK === '1') await page.addStyleTag({content:`body{background:#1a1b1c} motorvarmare-card{--primary-text-color:#e8eaed;--secondary-text-color:#b8c0cb;--card-background-color:#101113;--secondary-background-color:#292a2d;--divider-color:#3c4043;--primary-color:#a8c7fa;--text-primary-color:#062e6f}`});
     if (process.env.MOTORVARMARE_PREVIEW_PATH) await page.screenshot({path:process.env.MOTORVARMARE_PREVIEW_PATH,fullPage:true});
     await card.locator('#start-now').click();
     assert.deepEqual((await page.evaluate(()=>window.calls.shift())),{domain:'button',service:'press',data:{entity_id:'button.car_start'}});
@@ -66,6 +70,15 @@ async function main() {
     await card.locator('#stop-now').click();
     assert.deepEqual((await page.evaluate(()=>window.calls.shift())),{domain:'button',service:'press',data:{entity_id:'button.car_stop'}});
     const tomorrow=await page.evaluate(()=>document.querySelector('motorvarmare-card')._dayKeys()[1]);
+    await card.locator(`[data-grid-day="${tomorrow}"]`).click({position:{x:8,y:18.5*64}});
+    assert.equal(await card.locator('#calendar-time').inputValue(),'18:30','Clicking an empty slot selects its time');
+    await card.locator('#cancel-calendar').click();
+    await card.locator('.cal-agenda summary').click();
+    await card.locator('.cal-scroll').evaluate(el=>{el.scrollTop=700;});
+    const scrollBefore=await card.locator('.cal-scroll').evaluate(el=>el.scrollTop);
+    await page.evaluate(()=>{document.querySelector('motorvarmare-card').hass={...window.hass};});
+    assert.equal(await card.locator('.cal-scroll').evaluate(el=>el.scrollTop),scrollBefore,'Home Assistant updates must preserve the selected calendar position');
+    assert.equal(await card.locator('.cal-agenda').evaluate(el=>el.open),true,'Home Assistant updates must preserve the open departures list');
     await card.locator(`[data-add-day="${tomorrow}"]`).click();
     await card.locator('#calendar-time').fill('11:15');
     await card.locator('#add-calendar').click();
@@ -77,8 +90,58 @@ async function main() {
     const second=await page.evaluate(()=>window.calls.shift());
     assert.equal(second.data.start_date_time,`${tomorrow}T14:30:00`);
     assert.equal(second.data.end_date_time,`${tomorrow}T14:31:00`);
-    await card.locator('[data-remove-uid="one"]').click();
+    await card.locator('[data-remove-uid="one"]').first().click();
     assert.deepEqual((await page.evaluate(()=>window.calls.shift())),{ws:{type:'calendar/event/delete',entity_id:'calendar.car_schedule',uid:'one'}});
+    // Two simultaneous windows must remain independently visible. Intervals
+    // crossing midnight must be drawn in both local-day columns, including a
+    // departure just outside the visible week whose heating starts within it.
+    const cases = await page.evaluate(() => {
+      const element=document.querySelector('motorvarmare-card');
+      const keys=element._dayKeys(), day=keys[1], next=keys[2], last=keys[6];
+      const eighth=new Date(`${last}T12:00:00Z`); eighth.setUTCDate(eighth.getUTCDate()+1);
+      const beyond=eighth.toISOString().slice(0,10);
+      const crossEnd=`${next}T00:20:00+01:00`, midnightEnd=`${next}T00:00:00+01:00`, overlapEnd=`${day}T10:45:00+01:00`, beyondEnd=`${beyond}T00:20:00+01:00`;
+      const attrs=window.hass.states['sensor.car_status'].attributes;
+      attrs.schedule_7_days.push(
+        {start:`${day}T23:40:00+01:00`,departure:crossEnd,source:'Planerad',uid:'cross',removable:true,duration_minutes:40},
+        {start:`${day}T23:30:00+01:00`,departure:midnightEnd,source:'Planerad',uid:'midnight',removable:true,duration_minutes:30},
+        {start:`${day}T10:20:00+01:00`,departure:overlapEnd,source:'Planerad',uid:'overlap',removable:true,duration_minutes:25},
+        {start:`${last}T23:30:00+01:00`,departure:beyondEnd,source:'Veckoschema',duration_minutes:50},
+        {start:`${day}T13:00:00+01:00`,departure:`${day}T13:30:00+01:00`,source:'Planerad',suppressed:true,duration_minutes:30},
+        {start:null,departure:`${day}T14:00:00+01:00`,source:'Planerad',duration_minutes:0},
+        {start:null,departure:`${day}T15:00:00+01:00`,source:'Planerad',duration_minutes:null}
+      );
+      element.hass={...window.hass};
+      return {day,next,last,crossEnd,midnightEnd,overlapEnd,beyondEnd,original:`${day}T09:30:00Z`};
+    });
+    const cross=card.locator(`[data-departure="${cases.crossEnd}"]`);
+    assert.equal(await cross.count(),2,'Cross-midnight heating must appear on both days');
+    assert.equal(await card.locator(`[data-departure="${cases.crossEnd}"][data-segment-day="${cases.day}"]`).count(),1);
+    assert.equal(await card.locator(`[data-departure="${cases.crossEnd}"][data-segment-day="${cases.next}"]`).count(),1);
+    assert.equal(await card.locator(`[data-departure="${cases.midnightEnd}"][data-segment-day="${cases.day}"]`).count(),1);
+    assert.equal(await card.locator(`[data-departure="${cases.midnightEnd}"][data-segment-day="${cases.next}"]`).count(),1,'Midnight departure remains visible and removable on the departure day');
+    assert.equal(await card.locator(`[data-departure="${cases.beyondEnd}"][data-segment-day="${cases.last}"]`).count(),1);
+    assert.equal(await card.locator('.marker-event').count(),4,'Stopped, zero/unknown heating and the midnight departure use markers');
+    assert.match(await card.locator(`[data-departure="${cases.original}"]`).getAttribute('aria-label'),/09:54.*10:30/);
+    const geometry=await page.evaluate(({original,overlapEnd,day})=>{
+      const root=document.querySelector('motorvarmare-card').shadowRoot;
+      const first=root.querySelector(`[data-departure="${original}"][data-segment-day="${day}"]`).getBoundingClientRect();
+      const second=root.querySelector(`[data-departure="${overlapEnd}"][data-segment-day="${day}"]`).getBoundingClientRect();
+      return {first:{left:first.left,right:first.right,top:first.top,bottom:first.bottom},second:{left:second.left,right:second.right,top:second.top,bottom:second.bottom}};
+    },cases);
+    assert.ok(geometry.first.top < geometry.second.bottom && geometry.second.top < geometry.first.bottom,'Overlapping intervals must overlap vertically');
+    assert.ok(geometry.first.right <= geometry.second.left || geometry.second.right <= geometry.first.left,'Overlapping intervals must be placed in separate lanes');
+    await page.clock.setFixedTime(new Date('2026-10-24T12:00:00Z'));
+    await page.evaluate(()=>{const a=window.hass.states['sensor.car_status'].attributes;a.schedule_7_days=[{start:'2026-10-25T02:50:00+02:00',departure:'2026-10-25T02:20:00+01:00',source:'Planerad',uid:'dst',removable:true,duration_minutes:30}];document.querySelector('motorvarmare-card').hass={...window.hass};});
+    const fallback=card.locator('[data-departure="2026-10-25T02:20:00+01:00"]');
+    assert.equal(await fallback.count(),1,'Repeated autumn hour must not disappear');
+    assert.match(await fallback.getAttribute('aria-label'),/02:50.*GMT\+2.*02:20.*GMT\+1/,'Repeated hour must identify both UTC offsets');
+    await page.clock.setFixedTime(new Date('2026-11-05T12:00:00Z'));
+    await page.evaluate(({day})=>{const a=window.hass.states['sensor.car_status'].attributes;a.schedule_7_days=[
+      {departure:`${day}T09:30:00Z`,start:`${day}T08:54:00Z`,source:'Planerad',uid:'one',removable:true,duration_minutes:36},
+      {departure:`${day}T12:30:00Z`,start:`${day}T11:54:00Z`,source:'Kalender',duration_minutes:36},
+      {departure:'2026-11-08T06:30:00Z',start:'2026-11-08T05:54:00Z',source:'Veckoschema',duration_minutes:36},
+      {departure:'2026-11-09T07:00:00Z',start:'2026-11-09T06:24:00Z',source:'Planerad',uid:'two',removable:true,duration_minutes:36}];document.querySelector('motorvarmare-card').hass={...window.hass};},cases);
     await page.evaluate(()=>{window.hass.locale.language='en';window.hass.states['sensor.car_status'].attributes.error='Kunde inte stänga av brytaren; försöker igen; Kalendern kan inte läsas; se Home Assistants logg';document.querySelector('motorvarmare-card').hass={...window.hass};});
     assert.match(await card.locator('.wrap').innerText(),/Next 7 days/);
     assert.match(await card.locator('.wrap').innerText(),/Waiting to start/);
