@@ -41,4 +41,3 @@ Kortet visar det tillstånd som brytaren rapporterar. Värmningen styrs av integ
 ## Licens
 
 [MIT](LICENSE).
-

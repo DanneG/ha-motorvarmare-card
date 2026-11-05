@@ -1,0 +1,21 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate dashboard repository with HACS
+        uses: hacs/action@main
+        with:
+          category: plugin
+      - name: Check JavaScript syntax
+        run: node --check dist/ha-motorvarmare-card.js
