@@ -14,7 +14,7 @@ For manual installation, copy [`dist/ha-motorvarmare-card.js`](dist/ha-motorvarm
 
 ## Using the card
 
-The seven-day calendar shows each estimated heating period as a block on a time grid. Select a day and add one or more departure times. These are stored in the car's own Home Assistant calendar; Google Calendar is not modified. Google Calendar and weekly-schedule departures can also be displayed. Planned start times use the current outdoor temperature and can change as the temperature changes.
+The calendar shows each estimated heating period on a seven-day time grid. On narrow cards, select a day to see its departures in a compact list. Add one or more departure times per day. These are stored in the car's own Home Assistant calendar; Google Calendar is not modified. Google Calendar and weekly-schedule departures can also be displayed. Planned start times use the current outdoor temperature and can change as the temperature changes.
 
 **Start now** runs the heater for the duration calculated by `30 − 1.5 × temperature in °C`. **Stop** cancels a heating session controlled by the integration. Calendar, outdoor sensor and switch settings are configured in the integration.
 

@@ -14,7 +14,7 @@ För manuell installation: kopiera [`dist/ha-motorvarmare-card.js`](../dist/ha-m
 
 ## Användning
 
-Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som block på en tidsaxel. Välj en dag och lägg till en eller flera avresetider. De sparas i bilens egen Home Assistant-kalender; Google Kalender ändras inte. Avresor från Google och veckoschemat kan också visas. Planerade starttider bygger på den aktuella utetemperaturen och kan ändras när temperaturen ändras.
+Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som block på en tidsaxel. På smala kort kan du välja en dag och se dess avresor i en kompakt lista. Lägg till en eller flera avresetider per dag. De sparas i bilens egen Home Assistant-kalender; Google Kalender ändras inte. Avresor från Google och veckoschemat kan också visas. Planerade starttider bygger på den aktuella utetemperaturen och kan ändras när temperaturen ändras.
 
 **Starta nu** kör värmaren under tiden som formeln `30 − 1,5 × temperatur i °C` ger. **Stoppa** avbryter en uppvärmning som integrationen själv styr. Kalender, temperaturgivare och brytare ändras i integrationens inställningar.
 

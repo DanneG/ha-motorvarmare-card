@@ -79,18 +79,18 @@ async function main() {
     await page.evaluate(()=>{document.querySelector('motorvarmare-card').hass={...window.hass};});
     assert.equal(await card.locator('.cal-scroll').evaluate(el=>el.scrollTop),scrollBefore,'Home Assistant updates must preserve the selected calendar position');
     assert.equal(await card.locator('.cal-agenda').evaluate(el=>el.open),true,'Home Assistant updates must preserve the open departures list');
-    await card.locator(`[data-add-day="${tomorrow}"]`).click();
+    await card.locator(`.desktop-calendar [data-add-day="${tomorrow}"]`).click();
     await card.locator('#calendar-time').fill('11:15');
     await card.locator('#add-calendar').click();
     const add=await page.evaluate(()=>window.calls.shift());
     assert.deepEqual(add,{domain:'calendar',service:'create_event',data:{entity_id:'calendar.car_schedule',summary:'Avresa',start_date_time:`${tomorrow}T11:15:00`,end_date_time:`${tomorrow}T11:16:00`}});
-    await card.locator(`[data-add-day="${tomorrow}"]`).click();
+    await card.locator(`.desktop-calendar [data-add-day="${tomorrow}"]`).click();
     await card.locator('#calendar-time').fill('14:30');
     await card.locator('#add-calendar').click();
     const second=await page.evaluate(()=>window.calls.shift());
     assert.equal(second.data.start_date_time,`${tomorrow}T14:30:00`);
     assert.equal(second.data.end_date_time,`${tomorrow}T14:31:00`);
-    await card.locator('[data-remove-uid="one"]').first().click();
+    await card.locator('.desktop-calendar [data-remove-uid="one"]').first().click();
     assert.deepEqual((await page.evaluate(()=>window.calls.shift())),{ws:{type:'calendar/event/delete',entity_id:'calendar.car_schedule',uid:'one'}});
     // Two simultaneous windows must remain independently visible. Intervals
     // crossing midnight must be drawn in both local-day columns, including a
@@ -121,7 +121,7 @@ async function main() {
     assert.equal(await card.locator(`[data-departure="${cases.midnightEnd}"][data-segment-day="${cases.day}"]`).count(),1);
     assert.equal(await card.locator(`[data-departure="${cases.midnightEnd}"][data-segment-day="${cases.next}"]`).count(),1,'Midnight departure remains visible and removable on the departure day');
     assert.equal(await card.locator(`[data-departure="${cases.beyondEnd}"][data-segment-day="${cases.last}"]`).count(),1);
-    assert.equal(await card.locator('.marker-event').count(),4,'Stopped, zero/unknown heating and the midnight departure use markers');
+    assert.equal(await card.locator('.desktop-calendar .marker-event').count(),4,'Stopped, zero/unknown heating and the midnight departure use markers');
     assert.match(await card.locator(`[data-departure="${cases.original}"]`).getAttribute('aria-label'),/09:54.*10:30/);
     const geometry=await page.evaluate(({original,overlapEnd,day})=>{
       const root=document.querySelector('motorvarmare-card').shadowRoot;
