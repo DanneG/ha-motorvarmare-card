@@ -20,6 +20,8 @@ The calendar shows each estimated heating period on a seven-day time grid. On na
 
 If optional power and energy sensors are configured in the integration, the card displays their readings and alerts. See the [energy-monitoring example](docs/preview-energy.png) and the integration instructions for sensor requirements and notification settings.
 
+Open the [heating history](docs/preview-history.png) to see recent sessions and their measured energy when available. The integration starts collecting history from version 0.7.0 and retains the latest 100 sessions per car.
+
 Test start and stop with the actual equipment. An independent maximum-run timer is recommended in case Home Assistant cannot communicate with the switch.
 
 ## License

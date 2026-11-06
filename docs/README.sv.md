@@ -20,6 +20,8 @@ Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som 
 
 Om du väljer effekt- eller energisensor i integrationens inställningar visar kortet mätvärden och eventuella varningar. Se [exempel på energiövervakning](preview-energy.png) och integrationens instruktioner för sensorkrav och notisinställningar.
 
+Öppna [historiken](preview-history.png) för att se tidigare körningar och uppmätt energi när den finns. Integrationen börjar samla historik från version 0.7.0 och sparar de 100 senaste körningarna per bil.
+
 Prova start och avstängning på den faktiska utrustningen. En oberoende maxtimer rekommenderas om Home Assistant inte kan kommunicera med brytaren.
 
 ## Licens

@@ -40,6 +40,20 @@ MV_I18N.en.energyNoSession = "No session energy measurement yet.";
 MV_I18N.sv.powerWaiting = "Väntar på effektmätning."; MV_I18N.en.powerWaiting = "Waiting for power measurement.";
 MV_I18N.sv.powerAlarm = "Värmaren är på men effekten är låg. Kontrollera att motorvärmarkabeln är ansluten.";
 MV_I18N.en.powerAlarm = "The heater is on but power is low. Check that the engine heater cable is connected.";
+MV_I18N.sv.history = "Tidigare värmningar"; MV_I18N.en.history = "Heating history";
+MV_I18N.sv.historyEmpty = "Inga tidigare värmningar har registrerats ännu.";
+MV_I18N.en.historyEmpty = "No previous heating sessions have been recorded yet.";
+MV_I18N.sv.historyUpdate = "Uppdatera integrationen för att visa historiken.";
+MV_I18N.en.historyUpdate = "Update the integration to show the history.";
+MV_I18N.sv.historyStartMissing = "Starttid saknas"; MV_I18N.en.historyStartMissing = "Start time unavailable";
+MV_I18N.sv.historyEndMissing = "Sluttid saknas"; MV_I18N.en.historyEndMissing = "End time unavailable";
+MV_I18N.sv.historyStart = "Start"; MV_I18N.en.historyStart = "Start";
+MV_I18N.sv.historyEnd = "Av"; MV_I18N.en.historyEnd = "Off";
+MV_I18N.sv.historyEnergy = "Energi"; MV_I18N.en.historyEnergy = "Energy";
+MV_I18N.sv.historyTimeIncomplete = "Tidsuppgifter ofullständiga"; MV_I18N.en.historyTimeIncomplete = "Timing incomplete";
+MV_I18N.sv.historyEnergyUnavailable = "Energi saknas"; MV_I18N.en.historyEnergyUnavailable = "Energy unavailable";
+MV_I18N.sv.historyShowMore = "Visa fler"; MV_I18N.en.historyShowMore = "Show more";
+MV_I18N.sv.historyLessMinute = "under 1 min"; MV_I18N.en.historyLessMinute = "under 1 min";
 const MV_EN_STATES = {"Väntar":"Waiting", "Väntar på start":"Waiting to start", "Värmer":"Heating", "Avstängd":"Off", "Ingen avresa":"No departure", "Ingen uppvärmning behövs":"No heating needed", "Fel":"Error", "Brytaren var redan på":"Switch was already on", "Manuellt avstängd för denna avresa":"Manually turned off for this departure", "Kalender":"Calendar", "Manuell":"Manual", "Veckoschema":"Weekly schedule", "Planerad":"Scheduled", "Lokal":"Local", "Starta nu":"Start now"};
 const MV_EN_ERRORS = {"Brytaren är inte tillgänglig":"The switch is unavailable", "Värmaren är redan på eller styrs redan av integrationen":"The heater is already on or controlled by the integration", "Utetemperaturen är inte tillgänglig":"Outdoor temperature is unavailable", "Formeln ger ingen uppvärmning vid den här temperaturen":"The formula gives no heating time at this temperature", "Integrationen styr ingen pågående uppvärmning":"The integration is not controlling an active heating session", "Kunde inte slå på brytaren":"Could not turn on the switch", "Kunde inte stänga av brytaren; försöker igen":"Could not turn off the switch; retrying", "Kunde inte bekräfta att brytaren är av; försöker igen":"Could not confirm that the switch is off; retrying", "Brytarens tillstånd är okänt":"The switch state is unknown", "Utetemperaturen är inte tillgänglig eller saknar temperaturenhet":"Outdoor temperature is unavailable or has no temperature unit", "Kalendern svarade inte i tid; försöker igen":"Calendar timed out; retrying", "Kalendern kan inte läsas; se Home Assistants logg":"Calendar could not be read; check the Home Assistant log", "Kalendern kan inte läsas":"Calendar could not be read", "Kunde inte slå på brytaren; försöker stänga av":"Could not turn on the switch; trying to turn it off", "Ett oväntat fel uppstod; kontrollera loggen":"Unexpected error; check the log"};
 const MV_STATUS_KEYS = {waiting:"Väntar", error:"Fel", heating:"Värmer", stopped:"Avstängd", no_departure:"Ingen avresa", no_heating_needed:"Ingen uppvärmning behövs", waiting_to_start:"Väntar på start", already_on:"Brytaren var redan på", manually_stopped:"Manuellt avstängd för denna avresa"};
@@ -58,7 +72,7 @@ const mvErrorText = (hass, value) => {
 
 class MotorvarmareCard extends HTMLElement {
   constructor() {
-    super(); this.attachShadow({mode:"open"}); this._config = {}; this._showWeek = false; this._draft = null; this._pending = false;
+    super(); this.attachShadow({mode:"open"}); this._config = {}; this._showWeek = false; this._showHistory = false; this._historyLimit = 10; this._draft = null; this._pending = false;
     this._selectedDay = null; this._calendarTime = "07:00"; this._initialCalendarScroll = null;
     this._calendarAnchored = false; this._calendarUserScrolled = false; this._desktopPosition = null;
     this._mobileDay = null; this._mobileDayChosen = false;
@@ -102,7 +116,7 @@ class MotorvarmareCard extends HTMLElement {
     if (this._config.status_entity !== config.status_entity) {
       this._draft = null; this._selectedDay = null; this._initialCalendarScroll = null;
       this._calendarAnchored = false; this._calendarUserScrolled = false; this._desktopPosition = null;
-      this._mobileDay = null; this._mobileDayChosen = false;
+      this._mobileDay = null; this._mobileDayChosen = false; this._showHistory = false; this._historyLimit = 10;
     }
     this._config = {...config}; this._render();
   }
@@ -126,11 +140,14 @@ class MotorvarmareCard extends HTMLElement {
     };
   }
   _timeZone() { return this._hass?.config?.time_zone || undefined; }
-  _date(value) {
+  _date(value, includeOffset=false, includeYear=false) {
     if (!value) return "–";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "–";
-    return new Intl.DateTimeFormat(mvLang(this._hass) === "sv" ? "sv-SE" : "en-GB", {timeZone:this._timeZone(), weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}).format(date);
+    const options = {timeZone:this._timeZone(), weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"};
+    if (includeOffset) options.timeZoneName = "shortOffset";
+    if (includeYear) options.year = "numeric";
+    return new Intl.DateTimeFormat(mvLang(this._hass) === "sv" ? "sv-SE" : "en-GB", options).format(date);
   }
   _inputDate(value) {
     if (!value || ["unknown", "unavailable"].includes(value)) return "";
@@ -175,6 +192,7 @@ class MotorvarmareCard extends HTMLElement {
   async _callWS(data) { return this._perform(() => this._hass.callWS(data)); }
   _render() {
     if (!this.shadowRoot) return;
+    const focusedHistory=["history-toggle", "history-more"].includes(this.shadowRoot.activeElement?.id) ? this.shadowRoot.activeElement.id : null;
     const focusedMobileDay=this.shadowRoot.activeElement?.dataset?.mobileDay;
     const oldScroll=this.shadowRoot.querySelector(".cal-scroll");
     const scrollPosition=this._initialCalendarScroll || (oldScroll && this.isConnected && oldScroll.clientHeight ? {top:oldScroll.scrollTop,left:oldScroll.scrollLeft} : this._desktopPosition);
@@ -305,11 +323,35 @@ class MotorvarmareCard extends HTMLElement {
     const mobileCalendar=`<div class="mobile-calendar"><div class="mobile-days" role="group" aria-label="${t("selectDay")}">${mobileDays}</div><div class="mobile-selected"><strong>${mvEscape(this._dayLabel(this._mobileDay,dayKeys.indexOf(this._mobileDay)))}</strong><button class="mobile-add" data-add-day="${this._mobileDay}" ${!calendarOk || this._pending ? "disabled" : ""}>＋ ${t("add")}</button></div><div class="mobile-events">${mobileEntries || `<div class="mobile-empty">${t("noDeparture")}</div>`}</div></div>`;
     const desktopCalendar=`<div class="desktop-calendar"><div class="cal-scroll" role="region" tabindex="0" aria-label="${t("seven")}"><div class="cal-grid"><div class="cal-axis"><div class="cal-axis-head"></div><div class="cal-hours" style="height:${gridHeight}px">${rows}</div></div>${dayRows}</div></div><div class="cal-scroll-hint">${t("scrollHint")}</div><details class="cal-agenda" ${agendaOpen ? "open" : ""}><summary>${t("agenda")}</summary>${agendaRows ? `<ul>${agendaRows}</ul>` : `<div class="cal-empty">${t("noDeparture")}</div>`}</details></div>`;
     const calendarGrid=`${calendarEditor}${mobileCalendar}${desktopCalendar}`;
+    const historyAvailable=Array.isArray(a.heating_history);
+    const history=historyAvailable ? a.heating_history.filter(item=>item && typeof item==="object") : [];
+    const historyRows=history.slice(0,this._historyLimit).map(item=>{
+      const valid=value=>typeof value==="string" && value.length>0 && !Number.isNaN(new Date(value).getTime());
+      const hasStart=valid(item.start), hasEnd=valid(item.end), complete=item.complete === true && hasStart && hasEnd;
+      const sameDay=hasStart && hasEnd && this._dayKey(item.start)===this._dayKey(item.end);
+      const ambiguous=sameDay && this._inputDate(item.start)>=this._inputDate(item.end);
+      const sameYear=hasStart && hasEnd && this._dayKey(item.start).slice(0,4)===this._dayKey(item.end).slice(0,4);
+      const range=hasStart && hasEnd
+        ? `${this._date(item.start,ambiguous,true)} – ${sameYear ? this._clock(item.end,this._dayKey(item.start),ambiguous) : this._date(item.end,ambiguous,true)}`
+        : `${hasStart ? `${t("historyStart")} ${this._date(item.start,false,true)}` : t("historyStartMissing")} · ${hasEnd ? `${t("historyEnd")} ${this._date(item.end,false,true)}` : t("historyEndMissing")}`;
+      let duration="";
+      if (complete && Number.isFinite(item.duration_minutes) && item.duration_minutes>=0) {
+        const mins=Math.round(item.duration_minutes);
+        const formatted=item.duration_minutes>0 && mins===0 ? t("historyLessMinute") : mins>=60 ? `${Math.floor(mins/60)} h${mins%60 ? ` ${mins%60} min` : ""}` : `${mins} min`;
+        duration=`${t("duration")}: ${formatted}`;
+      }
+      const energy=Number.isFinite(item.energy_kwh) && item.energy_kwh>=0
+        ? `${t("historyEnergy")}: ${new Intl.NumberFormat(metricLocale,{minimumFractionDigits:2,maximumFractionDigits:3}).format(item.energy_kwh)} kWh`
+        : t("historyEnergyUnavailable");
+      return `<li class="history-entry"><div class="history-range">${mvEscape(range)}</div><div class="history-metrics">${duration ? `<span>${mvEscape(duration)}</span>` : ""}<span>${mvEscape(energy)}</span></div>${!complete ? `<div class="history-incomplete">${t("historyTimeIncomplete")}</div>` : ""}</li>`;
+    }).join("");
+    const historyBody=!historyAvailable ? `<div class="history-empty">${t("historyUpdate")}</div>` : !history.length ? `<div class="history-empty">${t("historyEmpty")}</div>` : `<ul class="history-list">${historyRows}</ul>${history.length>this._historyLimit ? `<button id="history-more" class="history-more">${t("historyShowMore")}</button>` : ""}`;
     this.shadowRoot.innerHTML = `
       <style>
         :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif)} *{box-sizing:border-box} ha-card{overflow:hidden} .wrap{padding:20px} .head{display:flex;gap:12px;align-items:center;margin-bottom:20px} .icon{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:rgba(var(--rgb-primary-color,3,169,244),.12);color:var(--primary-color)} ha-icon{--mdc-icon-size:22px}.headtext{flex:1;min-width:0}.title{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status{font-size:13px;color:var(--secondary-text-color);margin-top:2px}.badge{font-size:12px;font-weight:600;padding:6px 10px;border-radius:20px;background:var(--secondary-background-color);color:var(--secondary-text-color);white-space:nowrap}.badge.on{background:rgba(var(--rgb-success-color,67,160,71),.14);color:var(--success-color,#278748)} .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;padding:16px 0;border-top:1px solid var(--divider-color);border-bottom:1px solid var(--divider-color)} .label{font-size:12px;color:var(--secondary-text-color);margin-bottom:3px}.value{font-size:15px;font-weight:500;overflow-wrap:anywhere}.section{margin-top:18px}.sectionhead{font-weight:600;margin-bottom:10px}.manual{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.field{flex:1;min-width:175px}.field label{display:block;font-size:12px;color:var(--secondary-text-color);margin-bottom:5px} input[type=datetime-local],input[type=time]{color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:8px;font:inherit;min-height:40px;max-width:100%} input[type=datetime-local]{width:100%} button{font:500 14px var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif);color:var(--primary-color);background:transparent;border:0;border-radius:8px;min-height:40px;padding:8px 10px;cursor:pointer} button.primary{background:var(--primary-color);color:var(--text-primary-color,#fff)} button:disabled,input:disabled{opacity:.48;cursor:not-allowed} button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.expand{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 0;text-align:left;color:var(--primary-text-color);font-weight:600}.expand .small{font-size:12px;color:var(--primary-color)} .day{display:grid;grid-template-columns:minmax(75px,1fr) auto auto;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--divider-color)} .day input[type=time]{width:100px}.day-toggle{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--secondary-text-color);min-width:50px}.day-toggle input{width:18px;height:18px;accent-color:var(--primary-color)} .notice{font-size:13px;color:var(--error-color,#c62828);margin-top:12px;overflow-wrap:anywhere}.hint{font-size:12px;color:var(--secondary-text-color);margin-top:10px}.actions{display:flex;gap:4px;align-items:center} @media(max-width:350px){.wrap{padding:15px}.day{grid-template-columns:minmax(65px,1fr) auto auto;gap:5px}.day input[type=time]{width:90px}}
         .quick-actions{display:flex;align-items:center;gap:12px;margin-top:15px;flex-wrap:wrap}.quick-actions .hint{margin:0;flex:1;min-width:150px}.calendar{margin-top:20px}.calendar-title{font-weight:600;margin-bottom:4px}.calendar-subtitle{font-size:12px;color:var(--secondary-text-color);margin-bottom:10px;line-height:1.45}.cal-day{border-top:1px solid var(--divider-color);padding:9px 0}.cal-day-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;text-transform:none}.cal-day-head button{min-height:36px;padding:5px 6px}.cal-empty{font-size:12px;color:var(--secondary-text-color);padding:3px 0}.cal-entry{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.cal-timing{font-size:13px;font-weight:500}.cal-source{font-size:12px;color:var(--secondary-text-color)}.remove{font-size:12px;min-height:36px;color:var(--secondary-text-color);white-space:nowrap}.cal-editor{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}.cal-editor label{font-size:12px;color:var(--secondary-text-color)}.cal-editor input{width:105px}.cal-editor button{padding:6px 9px} .cal-warning{font-size:12px;color:var(--error-color,#c62828);margin-top:8px}
         .cal-scroll{overflow:auto;max-height:640px;border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);overscroll-behavior:contain}.cal-grid{display:grid;grid-template-columns:52px repeat(7,minmax(112px,1fr));min-width:836px}.cal-axis-head,.cal-day-head{height:78px;position:sticky;top:0;z-index:3;background:var(--card-background-color);border-bottom:1px solid var(--divider-color)}.cal-axis-head{z-index:4}.cal-day{border:0;padding:0;min-width:0}.cal-day-head{display:flex;position:sticky;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:4px 26px 4px 4px}.cal-weekday{font-size:11px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--secondary-text-color)}.cal-date{font-size:20px;font-weight:500;width:32px;height:32px;display:grid;place-items:center;border-radius:50%}.cal-date.is-today{background:var(--primary-color);color:var(--text-primary-color,#fff)}.cal-day-head .add-day{position:absolute;right:2px;top:22px;min-width:30px;min-height:32px;padding:3px;font-size:19px}.cal-column{position:relative;border-left:1px solid var(--divider-color);background-image:repeating-linear-gradient(to bottom,var(--divider-color) 0,var(--divider-color) 1px,transparent 1px,transparent 64px);cursor:crosshair}.cal-hours{position:relative}.cal-hour{position:absolute;right:6px;transform:translateY(-50%);font-size:11px;color:var(--secondary-text-color);white-space:nowrap}.cal-hour:first-child{transform:none}.cal-hour:last-child{transform:translateY(-100%)}.cal-event{position:absolute;z-index:1;display:flex;align-items:flex-start;gap:2px;padding:3px 2px 2px 4px;border-radius:5px;background:#e8b84f;border-left:3px solid #9b7130;color:#211906;overflow:hidden;cursor:default}.cal-event-text{min-width:0;flex:1;overflow:hidden}.cal-event .cal-timing{font-size:10px;line-height:12px;font-weight:600;color:inherit;overflow-wrap:anywhere}.cal-event .cal-source{font-size:10px;line-height:12px;color:inherit;opacity:.76;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cal-event.marker-event{background:var(--secondary-background-color);border-left-color:var(--secondary-text-color);color:var(--primary-text-color)}.cal-event .remove{flex:none;min-width:22px;min-height:24px;padding:0;color:inherit;font-size:17px;line-height:20px}.cal-editor{margin:0 0 10px;padding:10px;border-radius:8px;background:var(--secondary-background-color)}.cal-editor strong{font-size:13px;margin-right:4px}.cal-scroll-hint{font-size:11px;color:var(--secondary-text-color);margin-top:6px}.cal-agenda{font-size:12px;color:var(--secondary-text-color);margin-top:8px}.cal-agenda summary{cursor:pointer;color:var(--primary-color);padding:6px 0}.cal-agenda ul{list-style:none;margin:0;padding:0}.cal-agenda li{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--divider-color);padding:5px 0;line-height:1.5}.cal-agenda strong{color:var(--primary-text-color)}
+        .history-list{list-style:none;margin:0;padding:0}.history-entry{padding:11px 0;border-top:1px solid var(--divider-color);font-size:13px;line-height:1.45}.history-range{font-weight:600;color:var(--primary-text-color);overflow-wrap:anywhere}.history-metrics{display:flex;gap:6px 18px;flex-wrap:wrap;color:var(--secondary-text-color);margin-top:3px}.history-incomplete,.history-empty{font-size:12px;color:var(--secondary-text-color);margin-top:4px}.history-more{padding-left:0}
         .calendar{container-type:inline-size}.mobile-calendar,.mobile-hint{display:none}
         @container (max-width: 839px){
           .desktop-calendar,.desktop-hint{display:none}.mobile-calendar,.mobile-hint{display:block}
@@ -345,6 +387,7 @@ class MotorvarmareCard extends HTMLElement {
         <div class="calendar"><div class="calendar-title">${t("seven")}</div><div class="calendar-subtitle">${t("estimate")}${hasOverlap ? ` ${t("overlap")}` : ""} <span class="desktop-hint">${t("gridHint")}</span><span class="mobile-hint">${t("mobileHint")}</span></div>${hasSchedule ? calendarGrid : `<div class="cal-warning">${t("updateCalendar")}</div>`}${!calendarOk ? `<div class="hint">${t("updateAdd")}</div>` : ""}</div>
         <div class="section"><div class="sectionhead">${t("single")}</div><div class="manual"><div class="field"><label for="manual">${t("dateTime")}</label><input id="manual" type="datetime-local" value="${mvEscape(inputValue)}" ${!manualOk || this._pending ? "disabled" : ""}></div><div class="actions"><button class="primary" id="save" ${!manualOk || this._pending ? "disabled" : ""}>${t("save")}</button><button id="clear" ${!clearOk || this._pending ? "disabled" : ""}>${t("clear")}</button></div></div></div>
         <div class="section"><button class="expand" id="week" aria-expanded="${this._showWeek}"><span>${t("weekly")}</span><span class="small">${this._showWeek ? t("hide") : t("show")}</span></button>${this._showWeek ? weekRows : ""}</div>
+        <div class="section history-section"><button class="expand" id="history-toggle" aria-expanded="${this._showHistory}"><span>${t("history")}${historyAvailable && history.length ? ` (${history.length})` : ""}</span><span class="small">${this._showHistory ? t("hide") : t("show")}</span></button>${this._showHistory ? historyBody : ""}</div>
         ${(!e.manual_entity || !e.weekly.some(x=>x.time && x.enabled)) ? `<div class="hint">${t("missingEntities")}</div>` : ""}
         <div class="hint">${t("configBefore")}<a href="/config/integrations/integration/motorvarmare" style="color:var(--primary-color)">${t("configLink")}</a>${t("configAfter")}</div>
       </div></ha-card>`;
@@ -402,9 +445,12 @@ class MotorvarmareCard extends HTMLElement {
     });
     this.shadowRoot.querySelectorAll("[data-remove-uid]").forEach(el => el.addEventListener("click", () => this._callWS({type:"calendar/event/delete",entity_id:e.calendar,uid:el.dataset.removeUid})));
     this.shadowRoot.querySelector("#week")?.addEventListener("click", () => {this._showWeek = !this._showWeek; this._render();});
+    this.shadowRoot.querySelector("#history-toggle")?.addEventListener("click", () => {this._showHistory = !this._showHistory; this._render();});
+    this.shadowRoot.querySelector("#history-more")?.addEventListener("click", () => {this._historyLimit += 10; this._render();});
     this.shadowRoot.querySelectorAll("[data-day-time]").forEach((el) => el.addEventListener("change", () => {if (el.value) this._call("time", "set_value", {entity_id:e.weekly[Number(el.dataset.dayTime)].time, time:`${el.value}:00`});}));
     this.shadowRoot.querySelectorAll("[data-day-switch]").forEach((el) => el.addEventListener("change", () => this._call("switch", el.checked ? "turn_on" : "turn_off", {entity_id:e.weekly[Number(el.dataset.daySwitch)].enabled})));
     if (focusedMobileDay) this.shadowRoot.querySelector(`[data-mobile-day="${focusedMobileDay}"]`)?.focus({preventScroll:true});
+    if (focusedHistory) this.shadowRoot.querySelector(`#${focusedHistory}`)?.focus({preventScroll:true});
   }
 }
 
