@@ -28,6 +28,18 @@ MV_I18N.sv.agenda = "Visa alla avresor och tider"; MV_I18N.en.agenda = "Show all
 MV_I18N.sv.selectDay = "Välj dag"; MV_I18N.en.selectDay = "Select day";
 MV_I18N.sv.mobileHint = "Välj dag för att se tider eller lägga till en avresa.";
 MV_I18N.en.mobileHint = "Select a day to see times or add a departure.";
+MV_I18N.sv.currentPower = "Effekt just nu"; MV_I18N.en.currentPower = "Current power";
+MV_I18N.sv.sessionEnergy = "Energi, pågående/senaste körning"; MV_I18N.en.sessionEnergy = "Energy, current/last session";
+MV_I18N.sv.powerUnavailable = "Effektsensorn är inte tillgänglig."; MV_I18N.en.powerUnavailable = "Power sensor is unavailable.";
+MV_I18N.sv.energyUnavailable = "Energisensorn är inte tillgänglig. Visat värde är det senaste kända."; MV_I18N.en.energyUnavailable = "Energy sensor is unavailable. The displayed value is the last known reading.";
+MV_I18N.sv.energyUnavailableEmpty = "Energisensorn är inte tillgänglig."; MV_I18N.en.energyUnavailableEmpty = "Energy sensor is unavailable.";
+MV_I18N.sv.energyIncomplete = "Energimätningen för körningen är ofullständig och kan inte visas.";
+MV_I18N.en.energyIncomplete = "The session's energy measurement is incomplete and cannot be displayed.";
+MV_I18N.sv.energyNoSession = "Ingen energimätning för en körning ännu.";
+MV_I18N.en.energyNoSession = "No session energy measurement yet.";
+MV_I18N.sv.powerWaiting = "Väntar på effektmätning."; MV_I18N.en.powerWaiting = "Waiting for power measurement.";
+MV_I18N.sv.powerAlarm = "Värmaren är på men effekten är låg. Kontrollera att motorvärmarkabeln är ansluten.";
+MV_I18N.en.powerAlarm = "The heater is on but power is low. Check that the engine heater cable is connected.";
 const MV_EN_STATES = {"Väntar":"Waiting", "Väntar på start":"Waiting to start", "Värmer":"Heating", "Avstängd":"Off", "Ingen avresa":"No departure", "Ingen uppvärmning behövs":"No heating needed", "Fel":"Error", "Brytaren var redan på":"Switch was already on", "Manuellt avstängd för denna avresa":"Manually turned off for this departure", "Kalender":"Calendar", "Manuell":"Manual", "Veckoschema":"Weekly schedule", "Planerad":"Scheduled", "Lokal":"Local", "Starta nu":"Start now"};
 const MV_EN_ERRORS = {"Brytaren är inte tillgänglig":"The switch is unavailable", "Värmaren är redan på eller styrs redan av integrationen":"The heater is already on or controlled by the integration", "Utetemperaturen är inte tillgänglig":"Outdoor temperature is unavailable", "Formeln ger ingen uppvärmning vid den här temperaturen":"The formula gives no heating time at this temperature", "Integrationen styr ingen pågående uppvärmning":"The integration is not controlling an active heating session", "Kunde inte slå på brytaren":"Could not turn on the switch", "Kunde inte stänga av brytaren; försöker igen":"Could not turn off the switch; retrying", "Kunde inte bekräfta att brytaren är av; försöker igen":"Could not confirm that the switch is off; retrying", "Brytarens tillstånd är okänt":"The switch state is unknown", "Utetemperaturen är inte tillgänglig eller saknar temperaturenhet":"Outdoor temperature is unavailable or has no temperature unit", "Kalendern svarade inte i tid; försöker igen":"Calendar timed out; retrying", "Kalendern kan inte läsas; se Home Assistants logg":"Calendar could not be read; check the Home Assistant log", "Kalendern kan inte läsas":"Calendar could not be read", "Kunde inte slå på brytaren; försöker stänga av":"Could not turn on the switch; trying to turn it off", "Ett oväntat fel uppstod; kontrollera loggen":"Unexpected error; check the log"};
 const MV_STATUS_KEYS = {waiting:"Väntar", error:"Fel", heating:"Värmer", stopped:"Avstängd", no_departure:"Ingen avresa", no_heating_needed:"Ingen uppvärmning behövs", waiting_to_start:"Väntar på start", already_on:"Brytaren var redan på", manually_stopped:"Manuellt avstängd för denna avresa"};
@@ -181,6 +193,18 @@ class MotorvarmareCard extends HTMLElement {
     const heating = sw?.state === "on" ? t("on") : sw?.state === "off" ? t("off") : t("unknown");
     const title = cfg.title || status.attributes?.friendly_name?.replace(/\s+status$/i, "") || "Motorvärmare";
     const temperature = typeof a.temperature === "number" && Number.isFinite(a.temperature) ? `${new Intl.NumberFormat(mvLang(h) === "sv" ? "sv-SE" : "en-GB", {maximumFractionDigits:1}).format(a.temperature)} °C` : "–";
+    const showPower = a.power_sensor_configured === true, showEnergy = a.energy_sensor_configured === true;
+    const metricLocale = mvLang(h) === "sv" ? "sv-SE" : "en-GB";
+    const measuredPower = Number.isFinite(a.power_w) ? `${new Intl.NumberFormat(metricLocale, {maximumFractionDigits:1}).format(a.power_w)} W` : "–";
+    const hasSessionEnergy = a.energy_session_status !== "incomplete" && Number.isFinite(a.session_energy_kwh);
+    const sessionEnergy = hasSessionEnergy ? `${new Intl.NumberFormat(metricLocale, {minimumFractionDigits:2, maximumFractionDigits:3}).format(a.session_energy_kwh)} kWh` : "–";
+    const meterWarnings = [
+      showPower && a.energy_monitor_status === "power_unavailable" ? t("powerUnavailable") : null,
+      showEnergy && a.energy_sensor_available === false ? t(hasSessionEnergy ? "energyUnavailable" : "energyUnavailableEmpty") : null,
+      showEnergy && a.energy_session_status === "incomplete" ? t("energyIncomplete") : null,
+      showEnergy && a.energy_session_status === "no_session" && a.energy_sensor_available !== false ? t("energyNoSession") : null,
+      showPower && a.energy_monitor_status === "waiting" && sw?.state === "on" ? t("powerWaiting") : null,
+    ].filter(Boolean);
     const weekRows = e.weekly.map((day, i) => {
       const t = h.states[day.time], s = h.states[day.enabled];
       const availableTime = mvUsable(t), availableSwitch = mvUsable(s) && ["on","off"].includes(s.state);
@@ -309,7 +333,11 @@ class MotorvarmareCard extends HTMLElement {
           <div><div class="label">${t("plannedStart")}</div><div class="value">${mvEscape(this._date(a.planned_start))}</div></div>
           <div><div class="label">${t("temperature")}</div><div class="value">${mvEscape(temperature)}</div></div>
           <div><div class="label">${t("duration")}</div><div class="value">${currentRuntime !== null ? `${mvEscape(currentRuntime)} min` : a.next_departure && Number.isFinite(a.duration_minutes) ? `${mvEscape(a.duration_minutes)} min` : "–"}</div></div>
+          ${showPower ? `<div class="power-stat"><div class="label">${t("currentPower")}</div><div class="value">${mvEscape(measuredPower)}</div></div>` : ""}
+          ${showEnergy ? `<div class="energy-stat"><div class="label">${t("sessionEnergy")}</div><div class="value">${mvEscape(sessionEnergy)}</div></div>` : ""}
         </div>
+        ${a.alarm_active === true && showPower && a.energy_monitor_status === "low_power" && sw?.state === "on" ? `<div class="notice power-alarm" role="alert">${t("powerAlarm")}</div>` : ""}
+        ${meterWarnings.map(message => `<div class="hint meter-warning">${mvEscape(message)}</div>`).join("")}
         ${a.source ? `<div class="hint">${t("from")} ${mvEscape(String(mvStateText(h,a.source)).toLowerCase())}</div>` : ""}
         ${a.error ? `<div class="notice" role="status">${mvEscape(mvErrorText(h,a.error))}</div>` : ""}
         ${this._actionError ? `<div class="notice" role="alert">${mvEscape(this._actionError)}</div>` : ""}

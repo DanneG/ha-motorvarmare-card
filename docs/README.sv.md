@@ -18,7 +18,9 @@ Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som 
 
 **Starta nu** kör värmaren under tiden som formeln `30 − 1,5 × temperatur i °C` ger. **Stoppa** avbryter en uppvärmning som integrationen själv styr. Kalender, temperaturgivare och brytare ändras i integrationens inställningar.
 
-Prova start och avstängning på den faktiska utrustningen. En oberoende maxtimer rekommenderas eftersom Home Assistant eller Zigbee kan vara otillgängligt.
+Om du väljer effekt- eller energisensor i integrationens inställningar visar kortet mätvärden och eventuella varningar. Se [exempel på energiövervakning](preview-energy.png) och integrationens instruktioner för sensorkrav och notisinställningar.
+
+Prova start och avstängning på den faktiska utrustningen. En oberoende maxtimer rekommenderas om Home Assistant inte kan kommunicera med brytaren.
 
 ## Licens
 

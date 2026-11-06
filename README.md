@@ -18,7 +18,9 @@ The calendar shows each estimated heating period on a seven-day time grid. On na
 
 **Start now** runs the heater for the duration calculated by `30 − 1.5 × temperature in °C`. **Stop** cancels a heating session controlled by the integration. Calendar, outdoor sensor and switch settings are configured in the integration.
 
-Test start and stop with the actual equipment. An independent maximum-run timer is recommended because Home Assistant or Zigbee may be unavailable.
+If optional power and energy sensors are configured in the integration, the card displays their readings and alerts. See the [energy-monitoring example](docs/preview-energy.png) and the integration instructions for sensor requirements and notification settings.
+
+Test start and stop with the actual equipment. An independent maximum-run timer is recommended in case Home Assistant cannot communicate with the switch.
 
 ## License
 
