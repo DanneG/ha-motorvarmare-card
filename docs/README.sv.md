@@ -14,13 +14,13 @@ För manuell installation: kopiera [`dist/ha-motorvarmare-card.js`](../dist/ha-m
 
 ## Användning
 
-Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som block på en tidsaxel. På smala kort kan du välja en dag och se dess avresor i en kompakt lista. Lägg till en eller flera avresetider per dag. De sparas i bilens egen Home Assistant-kalender; Google Kalender ändras inte. Avresor från Google och veckoschemat kan också visas. Planerade starttider bygger på den aktuella utetemperaturen och kan ändras när temperaturen ändras.
+Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som block på en tidsaxel och kan bläddras framåt. På smala kort kan du välja en dag och se dess avresor i en kompakt lista. Lägg till en eller flera engångs- eller återkommande avresetider per dag. Du kan ändra eller ta bort en enskild lokal avresa eller en hel serie. De sparas i bilens egen Home Assistant-kalender; Google Kalender ändras inte. Avresor från Google och veckoschemat kan också visas. Planerade starttider bygger på den aktuella utetemperaturen och kan ändras när temperaturen ändras.
 
 **Starta nu** kör värmaren under tiden som formeln `30 − 1,5 × temperatur i °C` ger. **Stoppa** avbryter en uppvärmning som integrationen själv styr. Kalender, temperaturgivare och brytare ändras i integrationens inställningar.
 
 Om du väljer effekt- eller energisensor i integrationens inställningar visar kortet mätvärden och eventuella varningar. Se [exempel på energiövervakning](preview-energy.png) och integrationens instruktioner för sensorkrav och notisinställningar.
 
-Öppna [historiken](preview-history.png) för att se tidigare körningar och uppmätt energi när den finns. Integrationen börjar samla historik från version 0.7.0 och sparar de 100 senaste körningarna per bil.
+Öppna [historiken](preview-history.png) för att se tidigare körningar och uppmätt energi när den finns samt summor per dag, vecka och månad. De täcker de 100 senaste registrerade avslutade körningarna. Saknade mätvärden, ofullständig täckning och körningar som passerar en periodgräns markeras; energin från en sådan körning räknas till slutdatumet och kan ge en för hög summa i slutperioden. Integrationen börjar samla historik från version 0.7.0.
 
 Prova start och avstängning på den faktiska utrustningen. En oberoende maxtimer rekommenderas om Home Assistant inte kan kommunicera med brytaren.
 
