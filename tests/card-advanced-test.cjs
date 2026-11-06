@@ -68,7 +68,42 @@ async function main() {
     assert.equal(await card.locator('[data-mobile-departure="2026-11-20T09:00:00Z"]').count(),1);
     await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.current_duration_minutes=60;document.querySelector('motorvarmare-card').hass={...window.hass};});
     assert.match(await card.locator('[data-mobile-departure="2026-11-20T09:00:00Z"]').innerText(),/Start 09:00.*10:00/);
+    // A temperature stop blocks automatic scheduling even while Start now remains available.
+    await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.temperature=9.9;a.temperature_blocked=true;document.querySelector('motorvarmare-card').hass={...window.hass};});
+    assert.equal(await card.locator('[data-mobile-departure="2026-11-20T09:00:00Z"].marker-event').count(),1);
+    assert.doesNotMatch(await card.locator('[data-mobile-departure="2026-11-20T09:00:00Z"]').innerText(),/Start 09:00/);
+    assert.equal(await card.locator('#start-now').isEnabled(),true);
+    await card.locator('#start-now').click();
+    assert.ok(await page.evaluate(()=>window.calls.some(c=>c.domain==='button' && c.service==='press' && c.data.entity_id==='button.start')));
+    // The future estimate reappears as soon as the backend releases the block.
+    await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.temperature=9.5;a.temperature_blocked=false;document.querySelector('motorvarmare-card').hass={...window.hass};});
+    assert.match(await card.locator('[data-mobile-departure="2026-11-20T09:00:00Z"]').innerText(),/Start 09:00.*10:00/);
+    // An optional post-departure period changes the actual stop, not the departure.
+    await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.post_departure_minutes=30;document.querySelector('motorvarmare-card').hass={...window.hass};});
+    assert.match(await card.locator('[data-mobile-departure="2026-11-20T09:00:00Z"]').innerText(),/Start 09:00.*av 10:30.*avresa 10:00/);
+    assert.match(await card.locator('.stats').innerText(),/Före avresa\s*60 min/);
+    assert.match(await card.locator('.stats').innerText(),/Efter avresa\s*30 min/);
+    // Overlap must include the extra 30 minutes after the first departure.
+    await page.evaluate(()=>{const c=document.querySelector('motorvarmare-card');c._windowEvents.push({departure:'2026-11-20T10:15:00Z',source:'Kalender'});c.hass={...window.hass};});
+    assert.match(await card.locator('.calendar-subtitle').innerText(),/Överlappande tider/);
+    // Render intervals crossing both the beginning and end of the displayed week.
+    await page.evaluate(()=>{const c=document.querySelector('motorvarmare-card');c._windowEvents=[{departure:'2026-11-18T22:45:00Z',source:'Planerad',uid:'overnight',removable:true},{departure:'2026-11-25T22:45:00Z',source:'Planerad'}];c.hass={...window.hass};});
+    assert.equal(await card.locator('[data-departure="2026-11-18T22:45:00Z"][data-segment-day="2026-11-19"].heating-event').count(),1);
+    assert.equal(await card.locator('[data-departure="2026-11-25T22:45:00Z"][data-segment-day="2026-11-25"].heating-event').count(),1);
+    await card.locator('[data-mobile-day="2026-11-19"]').click();
+    await card.locator('[data-mobile-departure="2026-11-18T22:45:00Z"] [data-edit-index]').click();
+    assert.equal(await card.locator('#calendar-date').inputValue(),'2026-11-18');
+    await card.locator('#cancel-calendar').click();
+    // Turning the setting off removes the next-day portion and restores the old stop time.
+    await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.post_departure_minutes=0;document.querySelector('motorvarmare-card').hass={...window.hass};});
+    assert.equal(await card.locator('[data-departure="2026-11-18T22:45:00Z"][data-segment-day="2026-11-19"]').count(),0);
+    assert.doesNotMatch(await card.locator('.stats').innerText(),/Efter avresa/);
     await card.locator('#window-today').click();
+    // Today's view uses the integration's projected end, without shifting departure.
+    await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.post_departure_minutes=30;a.schedule_7_days=[{departure:'2026-11-06T08:00:00Z',start:'2026-11-06T07:00:00Z',end:'2026-11-06T08:30:00Z',source:'Planerad'}];document.querySelector('motorvarmare-card').hass={...window.hass};});
+    await card.locator(`[data-mobile-day="${keys[1]}"]`).click();
+    assert.match(await card.locator('[data-mobile-departure="2026-11-06T08:00:00Z"]').innerText(),/Start 08:00.*av 09:30.*avresa 09:00/);
+    await page.evaluate(()=>{window.hass.states['sensor.status'].attributes.post_departure_minutes=0;});
     await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.schedule_7_days=[{departure:'2026-11-06T08:00:00Z',start:'2026-11-06T07:24:00Z',source:'Planerad',uid:'series',recurrence_id:'2026-11-06T08:00:00+00:00',removable:true}];document.querySelector('motorvarmare-card').hass={...window.hass};window.calls=[];window.deferSchedule=false;window.serverEvents=a.schedule_7_days;});
     await card.locator(`[data-mobile-day="${keys[1]}"]`).click();
     // Editing one occurrence uses the series UID and original recurrence ID atomically.

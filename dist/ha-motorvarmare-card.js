@@ -16,6 +16,8 @@ MV_I18N.sv.overlap = "Överlappande tider: värmaren kan stängas av och starta 
 MV_I18N.en.overlap = "Overlapping times: the heater may turn off and restart between departures.";
 MV_I18N.sv.runtimeFor = "Värmer i"; MV_I18N.en.runtimeFor = "Heats for";
 MV_I18N.sv.runtimeOff = "stängs sedan av automatiskt."; MV_I18N.en.runtimeOff = "then turns off automatically.";
+MV_I18N.sv.preheatDuration = "Före avresa"; MV_I18N.en.preheatDuration = "Before departure";
+MV_I18N.sv.postDeparture = "Efter avresa"; MV_I18N.en.postDeparture = "After departure";
 MV_I18N.sv.noRuntime = "Formeln ger ingen uppvärmning vid den här temperaturen.";
 MV_I18N.en.noRuntime = "The formula gives no heating time at this temperature.";
 MV_I18N.sv.tempUnavailable = "Utetemperaturen är inte tillgänglig.";
@@ -270,7 +272,8 @@ class MotorvarmareCard extends HTMLElement {
       for (const chunk of chunks) {const [key,val,...extra]=chunk.split("=");if(!key || !val || extra.length || parts[key] || !["FREQ","INTERVAL","BYDAY","UNTIL"].includes(key)){this._actionError=mvText(this._hass,"ruleUnsupported");this._render();return;}parts[key]=val;}
       if (!["DAILY","WEEKLY","MONTHLY","YEARLY"].includes(parts.FREQ) || (parts.BYDAY && !parts.BYDAY.split(",").every(d=>["MO","TU","WE","TH","FR","SA","SU"].includes(d)))) {this._actionError=mvText(this._hass,"ruleUnsupported");this._render();return;}
     }
-    this._selectedDay=this._dayKey(item.departure); this._editDate=this._dayKey(raw); this._calendarTime=this._inputDate(raw).slice(11,16);
+    const departureDay=this._dayKey(item.departure);
+    this._selectedDay=this._dayKeys().includes(departureDay) ? departureDay : this._dayKeys()[0]; this._editDate=this._dayKey(raw); this._calendarTime=this._inputDate(raw).slice(11,16);
     this._editSummary=series ? item.series_summary : (item.summary || mvText(this._hass,"eventSummary")); this._editChoice=null; this._deleteRecurrence=null;
     this._editContext={uid:item.uid,recurrence_id:item.recurrence_id || null,series,occurrence:!!item.recurrence_id && !series}; this._editAcknowledged=false;
     this._repeatFreq=parts.FREQ || "NONE"; this._repeatInterval=parts.INTERVAL || 1;
@@ -406,19 +409,29 @@ class MotorvarmareCard extends HTMLElement {
       if (!this._windowOffset && !this._windowOverride) return item;
       // Future estimates follow the latest temperature even while viewing a week.
       const minutes=Number.isFinite(a.current_duration_minutes) ? a.current_duration_minutes : null;
-      return {...item,duration_minutes:minutes,start:minutes>0 ? new Date(new Date(item.departure).getTime()-minutes*60000).toISOString() : null};
+      const end=Number.isFinite(a.post_departure_minutes) ? new Date(new Date(item.departure).getTime()+a.post_departure_minutes*60000).toISOString() : item.end;
+      return {...item,end,duration_minutes:minutes,start:minutes>0 && a.temperature_blocked !== true ? new Date(new Date(item.departure).getTime()-minutes*60000).toISOString() : null};
     }).sort((x,y)=>new Date(x.departure)-new Date(y.departure)) : [];
+    const stopTime = item => item.end && !Number.isNaN(new Date(item.end).getTime()) ? item.end : item.departure;
+    const hasExtendedStop = item => new Date(stopTime(item)).getTime() > new Date(item.departure).getTime();
+    const heatTiming = (item,key) => {
+      const end=stopTime(item);
+      const ambiguous=this._dayKey(item.start)===this._dayKey(end) && this._inputDate(item.start)>=this._inputDate(end);
+      const departure=hasExtendedStop(item) ? ` · ${t("depShort")} ${this._clock(item.departure,key,ambiguous)}` : "";
+      return `${t("startShort")} ${this._clock(item.start,key,ambiguous)} · ${t("stopShort")} ${this._clock(end,key,ambiguous)}${departure}`;
+    };
     const heatingWindows = schedule.filter(item => !item.suppressed && item.start);
-    const hasOverlap = heatingWindows.some((item,i) => i > 0 && new Date(item.start) < new Date(heatingWindows[i-1].departure));
+    const hasOverlap = heatingWindows.some((item,i) => i > 0 && new Date(item.start) < new Date(stopTime(heatingWindows[i-1])));
     // The grid uses local wall-clock days, not UTC dates. Split an interval at
     // each local midnight so heating before midnight remains visible.
     const dayKeys = this._dayKeys(), hourHeight = 64;
     const minutesOf = value => { const local=this._inputDate(value); return local ? Number(local.slice(11,13))*60+Number(local.slice(14,16)) : null; };
     const segments = [];
     for (const item of schedule) {
-      const endKey=this._dayKey(item.departure), endMinute=minutesOf(item.departure);
+      const end=stopTime(item), endKey=this._dayKey(end), endMinute=minutesOf(end);
+      const departureKey=this._dayKey(item.departure), departureMinute=minutesOf(item.departure);
       const startKey=item.start ? this._dayKey(item.start) : "", startMinute=item.start ? minutesOf(item.start) : null;
-      const hasHeat=!item.suppressed && startKey && startMinute !== null && new Date(item.start) < new Date(item.departure);
+      const hasHeat=!item.suppressed && startKey && startMinute !== null && new Date(item.start) < new Date(end);
       for (const key of dayKeys) {
         if (hasHeat && startKey <= key && endKey >= key) {
           const from=startKey === key ? startMinute : 0, to=endKey === key ? endMinute : 1440;
@@ -427,8 +440,8 @@ class MotorvarmareCard extends HTMLElement {
           // A repeated local clock hour may make the wall-clock end appear
           // earlier than the start even though the real interval is positive.
           else if (startKey === endKey && key === endKey) segments.push({item,key,from:endMinute,to:endMinute,heat:true});
-        } else if (!hasHeat && endKey === key && endMinute !== null) {
-          segments.push({item,key,from:endMinute,to:endMinute,heat:false});
+        } else if (!hasHeat && departureKey === key && departureMinute !== null) {
+          segments.push({item,key,from:departureMinute,to:departureMinute,heat:false});
         }
       }
     }
@@ -456,8 +469,7 @@ class MotorvarmareCard extends HTMLElement {
       for (const g of groups) { const count=Math.max(...g.map(x=>x.lane))+1; for (const item of g) item.lanes=count; }
       const entries = items.map(({item,top,height,heat,endOnly,lane,lanes}) => {
         const source = item.source ? mvStateText(h,String(item.source)) : mvStateText(h,"Planerad");
-        const ambiguous=heat && this._dayKey(item.start)===this._dayKey(item.departure) && this._inputDate(item.start)>=this._inputDate(item.departure);
-        const timing = item.suppressed ? `${t("suppressed")} · ${t("depShort")} ${this._clock(item.departure,key)}` : endOnly ? `${t("depShort")} ${this._clock(item.departure,key)}` : heat ? `${t("startShort")} ${this._clock(item.start,key,ambiguous)} · ${t("stopShort")} ${this._clock(item.departure,key,ambiguous)}` : `${item.duration_minutes === 0 ? t("noHeat") : t("missingStart")} · ${t("depShort")} ${this._clock(item.departure,key)}`;
+        const timing = item.suppressed ? `${t("suppressed")} · ${t("depShort")} ${this._clock(item.departure,key)}` : endOnly ? `${t(hasExtendedStop(item) ? "stopShort" : "depShort")} ${this._clock(stopTime(item),key)}` : heat ? heatTiming(item,key) : `${item.duration_minutes === 0 ? t("noHeat") : t("missingStart")} · ${t("depShort")} ${this._clock(item.departure,key)}`;
         const remove = key === this._dayKey(item.departure) && item.removable === true && item.uid && calendarOk ? `<button class="remove" data-remove-uid="${mvEscape(item.uid)}" ${item.recurrence_id ? `data-recurrence-id="${mvEscape(item.recurrence_id)}"` : ""} aria-label="${t("removeDeparture")} ${mvEscape(this._clock(item.departure,key))}" title="${t("removeDeparture")}">×</button>` : "";
         return `<div class="cal-event cal-entry ${heat ? "heating-event" : "marker-event"}" data-departure="${mvEscape(item.departure)}" data-segment-day="${key}" style="top:${top}px;height:${Math.min(height,gridHeight-top)}px;left:calc(${lane*100/lanes}% + 2px);width:calc(${100/lanes}% - 4px)" aria-label="${mvEscape(`${timing} · ${source}`)}" title="${mvEscape(`${timing} · ${source}`)}"><div class="cal-event-text"><div class="cal-timing">${mvEscape(timing)}</div><div class="cal-source">${mvEscape(source)}</div></div>${remove}</div>`;
       }).join("");
@@ -475,8 +487,7 @@ class MotorvarmareCard extends HTMLElement {
     const editEditor=this._editChoice ? `<div class="cal-editor" role="group" aria-label="${t("editChoice")}"><strong>${t("editChoice")}</strong><button id="edit-one">${t("deleteOne")}</button><button id="edit-series">${t("deleteSeries")}</button><button id="edit-cancel">${t("cancel")}</button></div>` : "";
     const agendaRows=schedule.filter(item=>dayKeys.includes(this._dayKey(item.departure))).map(item=>{
       const key=this._dayKey(item.departure), date=this._date(item.departure);
-      const ambiguous=item.start && this._dayKey(item.start)===key && this._inputDate(item.start)>=this._inputDate(item.departure);
-      const state=item.suppressed ? t("suppressed") : item.start ? `${t("startShort")} ${this._clock(item.start,key,ambiguous)} · ${t("stopShort")} ${this._clock(item.departure,key,ambiguous)}` : item.duration_minutes===0 ? t("noHeat") : t("missingStart");
+      const state=item.suppressed ? t("suppressed") : item.start ? heatTiming(item,key) : item.duration_minutes===0 ? t("noHeat") : t("missingStart");
       const source=mvStateText(h,String(item.source || "Planerad"));
       const remove=item.removable === true && item.uid && calendarOk ? `<button class="remove" data-remove-uid="${mvEscape(item.uid)}" ${item.recurrence_id ? `data-recurrence-id="${mvEscape(item.recurrence_id)}"` : ""} aria-label="${t("removeDeparture")} ${mvEscape(date)}">${t("remove")}</button>` : "";
       const edit=item.removable === true && item.uid && calendarOk ? `<button data-edit-index="${schedule.indexOf(item)}">${t("edit")}</button>` : "";
@@ -490,8 +501,7 @@ class MotorvarmareCard extends HTMLElement {
     }).join("");
     const mobileEntries=segments.filter(s=>s.key===this._mobileDay).sort((a,b)=>a.from-b.from).map(({item,heat,endOnly})=>{
       const key=this._mobileDay;
-      const ambiguous=heat && this._dayKey(item.start)===this._dayKey(item.departure) && this._inputDate(item.start)>=this._inputDate(item.departure);
-      const timing=item.suppressed ? `${t("suppressed")} · ${t("depShort")} ${this._clock(item.departure,key)}` : endOnly ? `${t("depShort")} ${this._clock(item.departure,key)}` : heat ? `${t("startShort")} ${this._clock(item.start,key,ambiguous)} · ${t("stopShort")} ${this._clock(item.departure,key,ambiguous)}` : `${item.duration_minutes === 0 ? t("noHeat") : t("missingStart")} · ${t("depShort")} ${this._clock(item.departure,key)}`;
+      const timing=item.suppressed ? `${t("suppressed")} · ${t("depShort")} ${this._clock(item.departure,key)}` : endOnly ? `${t(hasExtendedStop(item) ? "stopShort" : "depShort")} ${this._clock(stopTime(item),key)}` : heat ? heatTiming(item,key) : `${item.duration_minutes === 0 ? t("noHeat") : t("missingStart")} · ${t("depShort")} ${this._clock(item.departure,key)}`;
       const source=mvStateText(h,String(item.source || "Planerad"));
       const remove=item.removable===true && item.uid && calendarOk ? `<button class="mobile-remove" data-remove-uid="${mvEscape(item.uid)}" ${item.recurrence_id ? `data-recurrence-id="${mvEscape(item.recurrence_id)}"` : ""} aria-label="${t("removeDeparture")} ${mvEscape(this._date(item.departure))}">${t("remove")}</button>` : "";
       const edit=item.removable===true && item.uid && calendarOk ? `<button data-edit-index="${schedule.indexOf(item)}">${t("edit")}</button>` : "";
@@ -567,7 +577,8 @@ class MotorvarmareCard extends HTMLElement {
           <div><div class="label">${t("departure")}</div><div class="value">${mvEscape(this._date(a.next_departure))}</div></div>
           <div><div class="label">${t("plannedStart")}</div><div class="value">${mvEscape(this._date(a.planned_start))}</div></div>
           <div><div class="label">${t("temperature")}</div><div class="value">${mvEscape(temperature)}</div></div>
-          <div><div class="label">${t("duration")}</div><div class="value">${currentRuntime !== null ? `${mvEscape(currentRuntime)} min` : a.next_departure && Number.isFinite(a.duration_minutes) ? `${mvEscape(a.duration_minutes)} min` : "–"}</div></div>
+          <div><div class="label">${t(a.post_departure_minutes > 0 ? "preheatDuration" : "duration")}</div><div class="value">${currentRuntime !== null ? `${mvEscape(currentRuntime)} min` : a.next_departure && Number.isFinite(a.duration_minutes) ? `${mvEscape(a.duration_minutes)} min` : "–"}</div></div>
+          ${a.post_departure_minutes > 0 ? `<div><div class="label">${t("postDeparture")}</div><div class="value">${mvEscape(a.post_departure_minutes)} min</div></div>` : ""}
           ${showPower ? `<div class="power-stat"><div class="label">${t("currentPower")}</div><div class="value">${mvEscape(measuredPower)}</div></div>` : ""}
           ${showEnergy ? `<div class="energy-stat"><div class="label">${t("sessionEnergy")}</div><div class="value">${mvEscape(sessionEnergy)}</div></div>` : ""}
         </div>
