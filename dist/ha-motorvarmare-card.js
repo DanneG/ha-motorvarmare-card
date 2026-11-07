@@ -115,6 +115,63 @@ const mvErrorText = (hass, value) => {
   return Object.entries(MV_EN_ERRORS).sort((a,b)=>b[0].length-a[0].length).reduce((text,[sv,en])=>text.split(sv).join(en),value);
 };
 
+// Keep stable nodes in place: replacing the entire shadow tree destroys the
+// browser's scroll anchor, including the anchor of a surrounding HA view.
+const mvPatch = (root, html) => {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const key = node => {
+    if (node.nodeType !== Node.ELEMENT_NODE) return `#${node.nodeType}`;
+    if (node.id) return `${node.localName}#${node.id}`;
+    const data = [...node.attributes].filter(a => a.name.startsWith("data-")).map(a => `${a.name}=${a.value}`).join(";");
+    return `${node.localName}.${node.getAttribute("class") || ""}|${data}`;
+  };
+  const sync = (existing, desired) => {
+    if (existing.nodeType !== desired.nodeType || (existing.nodeType === Node.ELEMENT_NODE && existing.localName !== desired.localName)) {
+      existing.replaceWith(desired.cloneNode(true)); return;
+    }
+    if (existing.nodeType === Node.TEXT_NODE || existing.nodeType === Node.COMMENT_NODE) {
+      if (existing.nodeValue !== desired.nodeValue) existing.nodeValue = desired.nodeValue;
+      return;
+    }
+    if (existing.nodeType === Node.ELEMENT_NODE) {
+      for (const attr of [...existing.attributes]) if (!desired.hasAttribute(attr.name)) existing.removeAttribute(attr.name);
+      for (const attr of [...desired.attributes]) if (existing.getAttribute(attr.name) !== attr.value) existing.setAttribute(attr.name, attr.value);
+    }
+    const wanted = [...desired.childNodes];
+    for (let i = 0; i < wanted.length; i++) {
+      let current = existing.childNodes[i], next = wanted[i];
+      if (!current || key(current) !== key(next)) {
+        const candidate = [...existing.childNodes].slice(i + 1).find(node => key(node) === key(next));
+        const currentKey = current && key(current);
+        const oldCount = current && [...existing.childNodes].slice(i).filter(node => key(node) === currentKey).length;
+        const wantedCount = current && wanted.slice(i).filter(node => key(node) === currentKey).length;
+        if (candidate && oldCount > wantedCount) {
+          // Remove obsolete siblings instead of detaching a stable calendar or
+          // other potential page scroll anchor and inserting it again.
+          current.remove(); i--; continue;
+        }
+        if (candidate) { existing.insertBefore(candidate, current || null); current = candidate; }
+        else { current = next.cloneNode(true); existing.insertBefore(current, existing.childNodes[i] || null); continue; }
+      }
+      sync(current, next);
+    }
+    while (existing.childNodes.length > wanted.length) existing.lastChild.remove();
+    // Reused inputs may have a dirty value/checked property after interaction;
+    // syncing attributes alone would leave the displayed value out of date.
+    if (existing.nodeType === Node.ELEMENT_NODE && existing !== root.activeElement) {
+      if (existing.localName === "input") {
+        if (["checkbox", "radio"].includes(existing.type)) {
+          if (existing.checked !== desired.checked) existing.checked = desired.checked;
+        } else if (existing.value !== desired.value) existing.value = desired.value;
+      } else if (existing.localName === "select" && existing.value !== desired.value) {
+        existing.value = desired.value;
+      }
+    }
+  };
+  sync(root, template.content);
+};
+
 class MotorvarmareCard extends HTMLElement {
   constructor() {
     super(); this.attachShadow({mode:"open"}); this._config = {}; this._showWeek = false; this._showHistory = false; this._historyLimit = 10; this._draft = null; this._pending = false;
@@ -356,6 +413,9 @@ class MotorvarmareCard extends HTMLElement {
   async _callWS(data) { return this._perform(() => this._hass.callWS(data)); }
   _render() {
     if (!this.shadowRoot) return;
+    this._renderController?.abort();
+    this._renderController = new AbortController();
+    const renderSignal = this._renderController.signal;
     const focusedHistory=["history-toggle", "history-more", "total-more", "window-previous", "window-next", "window-today"].includes(this.shadowRoot.activeElement?.id) ? this.shadowRoot.activeElement.id : null;
     const focusedTotal=this.shadowRoot.activeElement?.dataset?.totalPeriod;
     const focusedMobileDay=this.shadowRoot.activeElement?.dataset?.mobileDay;
@@ -548,7 +608,7 @@ class MotorvarmareCard extends HTMLElement {
     const formatRangeDate=key=>new Intl.DateTimeFormat(metricLocale,{timeZone:"UTC",day:"numeric",month:"short",year:"numeric"}).format(new Date(`${key}T12:00:00Z`));
     const calendarNav=`<div class="calendar-nav"><button id="window-previous" aria-label="${t("calendarPrevious")}" title="${t("calendarPrevious")}" ${this._windowOffset===0 ? "disabled" : ""}>‹</button><span class="calendar-range">${mvEscape(formatRangeDate(dayKeys[0]))} – ${mvEscape(formatRangeDate(dayKeys[6]))}</span><button id="window-next" aria-label="${t("calendarNext")}" title="${t("calendarNext")}">›</button>${this._windowOffset ? `<button id="window-today">${t("calendarToday")}</button><button id="window-refresh" title="${t("refreshCalendar")}" aria-label="${t("refreshCalendar")}">↻</button>` : ""}</div>`;
     const scheduleBody=this._windowLoading ? `<div class="hint" role="status">${t("calendarLoading")}</div>` : this._windowError ? `<div class="cal-warning" role="alert">${this._windowUnsupported ? t("updateCalendar") : `${t("calendarFailed")} <button id="window-retry">${t("retry")}</button>`}</div>` : hasSchedule ? `${this._windowCalendarError ? `<div class="cal-warning" role="status">${t("calendarPartial")}</div>` : ""}${calendarGrid}` : `<div class="cal-warning">${t("updateCalendar")}</div>`;
-    this.shadowRoot.innerHTML = `
+    const newMarkup = `
       <style>
         :host{display:block;color:var(--primary-text-color);font-family:var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif)} *{box-sizing:border-box} ha-card{overflow:hidden} .wrap{padding:20px} .head{display:flex;gap:12px;align-items:center;margin-bottom:20px} .icon{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;background:rgba(var(--rgb-primary-color,3,169,244),.12);color:var(--primary-color)} ha-icon{--mdc-icon-size:22px}.headtext{flex:1;min-width:0}.title{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.status{font-size:13px;color:var(--secondary-text-color);margin-top:2px}.badge{font-size:12px;font-weight:600;padding:6px 10px;border-radius:20px;background:var(--secondary-background-color);color:var(--secondary-text-color);white-space:nowrap}.badge.on{background:rgba(var(--rgb-success-color,67,160,71),.14);color:var(--success-color,#278748)} .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px;padding:16px 0;border-top:1px solid var(--divider-color);border-bottom:1px solid var(--divider-color)} .label{font-size:12px;color:var(--secondary-text-color);margin-bottom:3px}.value{font-size:15px;font-weight:500;overflow-wrap:anywhere}.section{margin-top:18px}.sectionhead{font-weight:600;margin-bottom:10px}.manual{display:flex;gap:8px;align-items:end;flex-wrap:wrap}.field{flex:1;min-width:175px}.field label{display:block;font-size:12px;color:var(--secondary-text-color);margin-bottom:5px} input[type=datetime-local],input[type=time]{color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:8px;padding:8px;font:inherit;min-height:40px;max-width:100%} input[type=datetime-local]{width:100%} button{font:500 14px var(--paper-font-body1_-_font-family,Roboto,system-ui,sans-serif);color:var(--primary-color);background:transparent;border:0;border-radius:8px;min-height:40px;padding:8px 10px;cursor:pointer} button.primary{background:var(--primary-color);color:var(--text-primary-color,#fff)} button:disabled,input:disabled{opacity:.48;cursor:not-allowed} button:focus-visible,input:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.expand{display:flex;align-items:center;justify-content:space-between;width:100%;padding:9px 0;text-align:left;color:var(--primary-text-color);font-weight:600}.expand .small{font-size:12px;color:var(--primary-color)} .day{display:grid;grid-template-columns:minmax(75px,1fr) auto auto;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--divider-color)} .day input[type=time]{width:100px}.day-toggle{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--secondary-text-color);min-width:50px}.day-toggle input{width:18px;height:18px;accent-color:var(--primary-color)} .notice{font-size:13px;color:var(--error-color,#c62828);margin-top:12px;overflow-wrap:anywhere}.hint{font-size:12px;color:var(--secondary-text-color);margin-top:10px}.actions{display:flex;gap:4px;align-items:center} @media(max-width:350px){.wrap{padding:15px}.day{grid-template-columns:minmax(65px,1fr) auto auto;gap:5px}.day input[type=time]{width:90px}}
         .quick-actions{display:flex;align-items:center;gap:12px;margin-top:15px;flex-wrap:wrap}.quick-actions .hint{margin:0;flex:1;min-width:150px}.calendar{margin-top:20px}.calendar-title{font-weight:600;margin-bottom:4px}.calendar-subtitle{font-size:12px;color:var(--secondary-text-color);margin-bottom:10px;line-height:1.45}.cal-day{border-top:1px solid var(--divider-color);padding:9px 0}.cal-day-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:600;text-transform:none}.cal-day-head button{min-height:36px;padding:5px 6px}.cal-empty{font-size:12px;color:var(--secondary-text-color);padding:3px 0}.cal-entry{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0}.cal-timing{font-size:13px;font-weight:500}.cal-source{font-size:12px;color:var(--secondary-text-color)}.remove{font-size:12px;min-height:36px;color:var(--secondary-text-color);white-space:nowrap}.cal-editor{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}.cal-editor label{font-size:12px;color:var(--secondary-text-color)}.cal-editor input{width:105px}.cal-editor button{padding:6px 9px} .cal-warning{font-size:12px;color:var(--error-color,#c62828);margin-top:8px}
@@ -595,62 +655,63 @@ class MotorvarmareCard extends HTMLElement {
         ${(!e.manual_entity || !e.weekly.some(x=>x.time && x.enabled)) ? `<div class="hint">${t("missingEntities")}</div>` : ""}
         <div class="hint">${t("configBefore")}<a href="/config/integrations/integration/motorvarmare" style="color:var(--primary-color)">${t("configLink")}</a>${t("configAfter")}</div>
       </div></ha-card>`;
+    mvPatch(this.shadowRoot, newMarkup);
     const newScroll=this.shadowRoot.querySelector(".cal-scroll");
     if (newScroll) {
       const autoTop=Math.max(0,(Math.floor((anchorSegment?.from ?? 7*60)/60)-1)*hourHeight);
       const anchorNow=!!anchorSegment && !this._calendarAnchored && !this._calendarUserScrolled;
       const nextScroll={top:anchorNow ? autoTop : (scrollPosition?.top ?? autoTop),left:scrollPosition?.left ?? 0};
       if (anchorSegment && (anchorNow || this._calendarUserScrolled)) this._calendarAnchored=true;
-      if (this.isConnected && newScroll.clientHeight) {
+      if (this.isConnected && newScroll.clientHeight && (newScroll !== oldScroll || anchorNow || this._initialCalendarScroll)) {
         newScroll.scrollTop=nextScroll.top;newScroll.scrollLeft=nextScroll.left;
         this._desktopPosition={top:newScroll.scrollTop,left:newScroll.scrollLeft}; this._initialCalendarScroll=null;
-      } else this._initialCalendarScroll=nextScroll;
+      } else if (!this.isConnected || !newScroll.clientHeight) this._initialCalendarScroll=nextScroll;
       const markScroll=()=>{this._calendarUserScrolled=true;};
-      newScroll.addEventListener("wheel",markScroll,{passive:true});
-      newScroll.addEventListener("touchmove",markScroll,{passive:true});
-      newScroll.addEventListener("pointerdown",ev=>{if (ev.target===newScroll) markScroll();});
-      newScroll.addEventListener("keydown",ev=>{if (["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"].includes(ev.key)) markScroll();});
-      newScroll.addEventListener("scroll",()=>{if (newScroll.clientHeight) this._desktopPosition={top:newScroll.scrollTop,left:newScroll.scrollLeft};});
+      newScroll.addEventListener("wheel",markScroll,{passive:true,signal:renderSignal});
+      newScroll.addEventListener("touchmove",markScroll,{passive:true,signal:renderSignal});
+      newScroll.addEventListener("pointerdown",ev=>{if (ev.target===newScroll) markScroll();}, {signal:renderSignal});
+      newScroll.addEventListener("keydown",ev=>{if (["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"].includes(ev.key)) markScroll();}, {signal:renderSignal});
+      newScroll.addEventListener("scroll",()=>{if (newScroll.clientHeight) this._desktopPosition={top:newScroll.scrollTop,left:newScroll.scrollLeft};}, {signal:renderSignal});
     }
     const manualInput = this.shadowRoot.querySelector("#manual");
-    manualInput?.addEventListener("input", (event) => {this._draft = event.target.value;});
+    manualInput?.addEventListener("input", (event) => {this._draft = event.target.value;}, {signal:renderSignal});
     this.shadowRoot.querySelector("#save")?.addEventListener("click", async () => {
       const value = manualInput.value;
       if (!value) {this._actionError=t("chooseDate"); this._render(); return;}
       if (value <= this._inputDate(new Date().toISOString())) {this._actionError=t("future"); this._render(); return;}
       this._draft = value;
       if (await this._call("datetime", "set_value", {entity_id:e.manual_entity, datetime:value.length === 16 ? `${value}:00` : value})) {this._draft = null; this._render();}
-    });
-    this.shadowRoot.querySelector("#clear")?.addEventListener("click", async () => {if (await this._call("button", "press", {entity_id:e.clear_entity})) {this._draft = null; this._render();}});
-    this.shadowRoot.querySelector("#start-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.start_now}));
-    this.shadowRoot.querySelector("#stop-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.stop_now}));
-    this.shadowRoot.querySelector("#window-previous")?.addEventListener("click", () => this._changeCalendarWindow(-7));
-    this.shadowRoot.querySelector("#window-next")?.addEventListener("click", () => this._changeCalendarWindow(7));
-    this.shadowRoot.querySelector("#window-today")?.addEventListener("click", () => this._changeCalendarWindow(null));
-    this.shadowRoot.querySelector("#window-refresh")?.addEventListener("click", () => this._loadCalendarWindow());
-    this.shadowRoot.querySelector("#window-retry")?.addEventListener("click", () => this._loadCalendarWindow());
+    }, {signal:renderSignal});
+    this.shadowRoot.querySelector("#clear")?.addEventListener("click", async () => {if (await this._call("button", "press", {entity_id:e.clear_entity})) {this._draft = null; this._render();}}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#start-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.start_now}), {signal:renderSignal});
+    this.shadowRoot.querySelector("#stop-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.stop_now}), {signal:renderSignal});
+    this.shadowRoot.querySelector("#window-previous")?.addEventListener("click", () => this._changeCalendarWindow(-7), {signal:renderSignal});
+    this.shadowRoot.querySelector("#window-next")?.addEventListener("click", () => this._changeCalendarWindow(7), {signal:renderSignal});
+    this.shadowRoot.querySelector("#window-today")?.addEventListener("click", () => this._changeCalendarWindow(null), {signal:renderSignal});
+    this.shadowRoot.querySelector("#window-refresh")?.addEventListener("click", () => this._loadCalendarWindow(), {signal:renderSignal});
+    this.shadowRoot.querySelector("#window-retry")?.addEventListener("click", () => this._loadCalendarWindow(), {signal:renderSignal});
     this.shadowRoot.querySelectorAll("[data-mobile-day]").forEach(el => el.addEventListener("click", () => {
       const key=el.dataset.mobileDay; this._mobileDay=key;this._mobileDayChosen=true;this._render();
       this.shadowRoot.querySelector(`[data-mobile-day="${key}"]`)?.focus({preventScroll:true});
-    }));
-    this.shadowRoot.querySelectorAll("[data-add-day]").forEach(el => el.addEventListener("click", () => this._selectCalendarDay(el.dataset.addDay)));
+    }, {signal:renderSignal}));
+    this.shadowRoot.querySelectorAll("[data-add-day]").forEach(el => el.addEventListener("click", () => this._selectCalendarDay(el.dataset.addDay), {signal:renderSignal}));
     this.shadowRoot.querySelectorAll("[data-grid-day]").forEach(el => el.addEventListener("click", event => {
       if (!calendarOk || this._pending || event.target.closest(".cal-event")) return;
       const elapsed=(event.clientY-el.getBoundingClientRect().top)/hourHeight*60;
       const minute=Math.max(0,Math.min(23*60+45,Math.round(elapsed/15)*15));
       this._selectCalendarDay(el.dataset.gridDay); this._calendarTime=`${String(Math.floor(minute/60)).padStart(2,"0")}:${String(minute%60).padStart(2,"0")}`; this._render();
-    }));
-    this.shadowRoot.querySelector("#cancel-calendar")?.addEventListener("click", () => { this._selectedDay=null; this._editContext=null; this._render(); });
-    this.shadowRoot.querySelector("#calendar-date")?.addEventListener("input", event => {this._editDate=event.target.value;});
-    this.shadowRoot.querySelector("#calendar-summary")?.addEventListener("input", event => {this._editSummary=event.target.value;});
-    this.shadowRoot.querySelector("#confirm-series-change")?.addEventListener("change", event => {this._editAcknowledged=event.target.checked;});
-    this.shadowRoot.querySelector("#calendar-time")?.addEventListener("input", event => { this._calendarTime=event.target.value; });
-    this.shadowRoot.querySelector("#repeat-frequency")?.addEventListener("change", event => {this._repeatFreq=event.target.value;this._render();});
-    this.shadowRoot.querySelector("#repeat-interval")?.addEventListener("input", event => {this._repeatInterval=event.target.value;});
-    this.shadowRoot.querySelector("#repeat-until")?.addEventListener("input", event => {this._repeatUntil=event.target.value;});
+    }, {signal:renderSignal}));
+    this.shadowRoot.querySelector("#cancel-calendar")?.addEventListener("click", () => { this._selectedDay=null; this._editContext=null; this._render(); }, {signal:renderSignal});
+    this.shadowRoot.querySelector("#calendar-date")?.addEventListener("input", event => {this._editDate=event.target.value;}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#calendar-summary")?.addEventListener("input", event => {this._editSummary=event.target.value;}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#confirm-series-change")?.addEventListener("change", event => {this._editAcknowledged=event.target.checked;}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#calendar-time")?.addEventListener("input", event => { this._calendarTime=event.target.value; }, {signal:renderSignal});
+    this.shadowRoot.querySelector("#repeat-frequency")?.addEventListener("change", event => {this._repeatFreq=event.target.value;this._render();}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#repeat-interval")?.addEventListener("input", event => {this._repeatInterval=event.target.value;}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#repeat-until")?.addEventListener("input", event => {this._repeatUntil=event.target.value;}, {signal:renderSignal});
     this.shadowRoot.querySelectorAll("[data-repeat-day]").forEach(el=>el.addEventListener("change",()=>{
       this._repeatDays=[...this.shadowRoot.querySelectorAll("[data-repeat-day]:checked")].map(x=>x.dataset.repeatDay);
-    }));
+    }, {signal:renderSignal}));
     this.shadowRoot.querySelector("#add-calendar")?.addEventListener("click", async () => {
       const value=this.shadowRoot.querySelector("#calendar-time")?.value, key=this._editDate;
       if (this._editContext?.series && !this._editAcknowledged) {this._actionError=t("seriesConfirmRequired");this._render();return;}
@@ -691,35 +752,35 @@ class MotorvarmareCard extends HTMLElement {
         ok=await this._call("calendar","create_event",{entity_id:e.calendar,summary,start_date_time:`${start}:00`,end_date_time:end});
       }
       if (ok) { this._selectedDay=null; this._editContext=null; await this._loadCalendarWindow(true); }
-    });
+    }, {signal:renderSignal});
     this.shadowRoot.querySelectorAll("[data-edit-index]").forEach(el=>el.addEventListener("click",()=>{
       const item=schedule[Number(el.dataset.editIndex)];if(!item)return;
       this._selectedDay=null;this._editContext=null;this._deleteRecurrence=null;this._actionError=null;
       if(item.recurrence_id){this._editChoice=item;this._render();}else this._startEditing(item,false);
-    }));
-    this.shadowRoot.querySelector("#edit-one")?.addEventListener("click",()=>this._startEditing(this._editChoice,false));
-    this.shadowRoot.querySelector("#edit-series")?.addEventListener("click",()=>this._startEditing(this._editChoice,true));
-    this.shadowRoot.querySelector("#edit-cancel")?.addEventListener("click",()=>{this._editChoice=null;this._render();});
+    }, {signal:renderSignal}));
+    this.shadowRoot.querySelector("#edit-one")?.addEventListener("click",()=>this._startEditing(this._editChoice,false), {signal:renderSignal});
+    this.shadowRoot.querySelector("#edit-series")?.addEventListener("click",()=>this._startEditing(this._editChoice,true), {signal:renderSignal});
+    this.shadowRoot.querySelector("#edit-cancel")?.addEventListener("click",()=>{this._editChoice=null;this._render();}, {signal:renderSignal});
     this.shadowRoot.querySelectorAll("[data-remove-uid]").forEach(el => el.addEventListener("click", async () => {
       if (el.dataset.recurrenceId) {this._deleteRecurrence={uid:el.dataset.removeUid,recurrence_id:el.dataset.recurrenceId};this._render();return;}
       if (await this._callWS({type:"calendar/event/delete",entity_id:e.calendar,uid:el.dataset.removeUid})) await this._loadCalendarWindow(true);
-    }));
-    this.shadowRoot.querySelector("#delete-cancel")?.addEventListener("click",()=>{this._deleteRecurrence=null;this._render();});
+    }, {signal:renderSignal}));
+    this.shadowRoot.querySelector("#delete-cancel")?.addEventListener("click",()=>{this._deleteRecurrence=null;this._render();}, {signal:renderSignal});
     const deleteRecurring=async (series)=>{
       const item=this._deleteRecurrence;if(!item)return;
       const msg={type:"calendar/event/delete",entity_id:e.calendar,uid:item.uid};
       if(!series)msg.recurrence_id=item.recurrence_id;
       if(await this._callWS(msg)){this._deleteRecurrence=null;await this._loadCalendarWindow(true);}
     };
-    this.shadowRoot.querySelector("#delete-one")?.addEventListener("click",()=>deleteRecurring(false));
-    this.shadowRoot.querySelector("#delete-series")?.addEventListener("click",()=>deleteRecurring(true));
-    this.shadowRoot.querySelector("#week")?.addEventListener("click", () => {this._showWeek = !this._showWeek; this._render();});
-    this.shadowRoot.querySelector("#history-toggle")?.addEventListener("click", () => {this._showHistory = !this._showHistory; this._render();});
-    this.shadowRoot.querySelector("#history-more")?.addEventListener("click", () => {this._historyLimit += 10; this._render();});
-    this.shadowRoot.querySelectorAll("[data-total-period]").forEach(el=>el.addEventListener("click",()=>{this._totalPeriod=el.dataset.totalPeriod;this._totalLimit=7;this._render();}));
-    this.shadowRoot.querySelector("#total-more")?.addEventListener("click",()=>{this._totalLimit+=7;this._render();});
-    this.shadowRoot.querySelectorAll("[data-day-time]").forEach((el) => el.addEventListener("change", () => {if (el.value) this._call("time", "set_value", {entity_id:e.weekly[Number(el.dataset.dayTime)].time, time:`${el.value}:00`});}));
-    this.shadowRoot.querySelectorAll("[data-day-switch]").forEach((el) => el.addEventListener("change", () => this._call("switch", el.checked ? "turn_on" : "turn_off", {entity_id:e.weekly[Number(el.dataset.daySwitch)].enabled})));
+    this.shadowRoot.querySelector("#delete-one")?.addEventListener("click",()=>deleteRecurring(false), {signal:renderSignal});
+    this.shadowRoot.querySelector("#delete-series")?.addEventListener("click",()=>deleteRecurring(true), {signal:renderSignal});
+    this.shadowRoot.querySelector("#week")?.addEventListener("click", () => {this._showWeek = !this._showWeek; this._render();}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#history-toggle")?.addEventListener("click", () => {this._showHistory = !this._showHistory; this._render();}, {signal:renderSignal});
+    this.shadowRoot.querySelector("#history-more")?.addEventListener("click", () => {this._historyLimit += 10; this._render();}, {signal:renderSignal});
+    this.shadowRoot.querySelectorAll("[data-total-period]").forEach(el=>el.addEventListener("click",()=>{this._totalPeriod=el.dataset.totalPeriod;this._totalLimit=7;this._render();}, {signal:renderSignal}));
+    this.shadowRoot.querySelector("#total-more")?.addEventListener("click",()=>{this._totalLimit+=7;this._render();}, {signal:renderSignal});
+    this.shadowRoot.querySelectorAll("[data-day-time]").forEach((el) => el.addEventListener("change", () => {if (el.value) this._call("time", "set_value", {entity_id:e.weekly[Number(el.dataset.dayTime)].time, time:`${el.value}:00`});}, {signal:renderSignal}));
+    this.shadowRoot.querySelectorAll("[data-day-switch]").forEach((el) => el.addEventListener("change", () => this._call("switch", el.checked ? "turn_on" : "turn_off", {entity_id:e.weekly[Number(el.dataset.daySwitch)].enabled}), {signal:renderSignal}));
     if (focusedMobileDay) this.shadowRoot.querySelector(`[data-mobile-day="${focusedMobileDay}"]`)?.focus({preventScroll:true});
     if (focusedHistory) this.shadowRoot.querySelector(`#${focusedHistory}`)?.focus({preventScroll:true});
     if (focusedTotal) this.shadowRoot.querySelector(`[data-total-period="${focusedTotal}"]`)?.focus({preventScroll:true});
