@@ -27,8 +27,11 @@ async function main() {
       const card=document.querySelector('motorvarmare-card');card.setConfig({status_entity:'sensor.car_status'});card.hass=window.baseHass;
     });
     const card=page.locator('motorvarmare-card'), dashboard=page.locator('#dashboard');
+    await card.locator('[data-main-tab="settings"]').click();
     await card.locator('#week').click();
+    await card.locator('[data-main-tab="energy"]').click();
     await card.locator('#history-toggle').click();
+    await card.locator('[data-main-tab="calendar"]').click();
     await page.evaluate(()=>{const root=document.querySelector('motorvarmare-card').shadowRoot;window.anchorNodes={card:root.querySelector('ha-card'),calendar:root.querySelector('.calendar'),week:root.querySelector('#week'),history:root.querySelector('#history-toggle')};});
     for (const relative of [0.25,0.55,0.85]) {
       const before=await dashboard.evaluate((root,ratio)=>{const card=root.querySelector('motorvarmare-card');root.scrollTop=card.offsetTop+card.offsetHeight*ratio;return root.scrollTop;},relative);

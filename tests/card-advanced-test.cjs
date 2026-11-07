@@ -149,6 +149,7 @@ async function main() {
     await card.locator('.mobile-remove').click();await card.locator('#delete-series').click();
     assert.deepEqual((await page.evaluate(()=>window.calls.shift())).ws,{type:'calendar/event/delete',entity_id:'calendar.car',uid:'series'});
     // Aggregates distinguish missing measurements and incomplete periods.
+    await card.locator('[data-main-tab="energy"]').click();
     await card.locator('#history-toggle').click();
     assert.match(await card.locator('.history-totals').innerText(),/1,25 kWh/);
     if (process.env.MOTORVARMARE_SCREENSHOTS) await card.locator('.history-totals').screenshot({path:path.join(process.env.MOTORVARMARE_SCREENSHOTS,'history.png')});
@@ -158,6 +159,7 @@ async function main() {
     await card.locator('[data-total-period="monthly"]').click();
     assert.match(await card.locator('.history-totals').innerText(),/3,75 kWh/);
     // Old installations still render and explain that a future view needs an integration update.
+    await card.locator('[data-main-tab="calendar"]').click();
     await page.evaluate(()=>{window.hass.states['sensor.status'].attributes.schedule_query_supported=false;document.querySelector('motorvarmare-card').hass={...window.hass};});
     await card.locator('#window-next').click();
     assert.match(await page.evaluate(()=>document.querySelector("motorvarmare-card").shadowRoot.textContent),/Uppdatera integrationen för att visa kalendern/);

@@ -36,6 +36,7 @@ async function main() {
       window.changeHistory=value=>{window.hass.states['sensor.car_status'].attributes.heating_history=value;card.hass={...window.hass};};
     });
     const card=page.locator('motorvarmare-card');
+    await card.locator('[data-main-tab="energy"]').click();
     const toggle=card.locator('#history-toggle');
     assert.equal(await toggle.getAttribute('aria-expanded'),'false');
     await toggle.click();

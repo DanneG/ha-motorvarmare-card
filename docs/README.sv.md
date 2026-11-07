@@ -2,9 +2,7 @@
 
 [English](../README.md) · Svenska
 
-Kortet visar motorvärmarens status, utetemperatur, nästa avresa och beräknad starttid. Du kan starta eller stoppa en uppvärmning och planera avresor för de kommande sju dagarna. Flera avresor kan läggas till samma dag i bilens egen kalender. Kortet följer Home Assistants svenska eller engelska språkval.
-
-![Motorvärmarkort med simulerade exempel](preview.png)
+Kortet visar motorvärmarens status, utetemperatur, nästa avresa och beräknad starttid. Du kan starta eller stoppa en uppvärmning och bläddra framåt i kalendern. Flera avresor kan läggas till samma dag i bilens egen kalender. Kortet följer Home Assistants svenska eller engelska språkval.
 
 ## Installera
 
@@ -12,17 +10,25 @@ Installera först [Motorvärmare-integrationen](https://github.com/DanneG/ha-mot
 
 För manuell installation: kopiera [`dist/ha-motorvarmare-card.js`](../dist/ha-motorvarmare-card.js) till `config/www/ha-motorvarmare-card.js`, lägg till `/local/ha-motorvarmare-card.js` som en JavaScript-modul under **Inställningar → Kontrollpaneler → ⋮ → Resurser** och uppdatera webbläsaren. Starta om Home Assistant om du just skapade `www`.
 
+För att se flera bilar tillsammans, lägg till **Motorvärmare – översikt** och välj bilarnas statusentiteter i den visuella redigeraren. Tryck på en bil för att öppna dess fullständiga kort; de separata korten finns också kvar.
+
 ## Användning
 
-Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som block på en tidsaxel och kan bläddras framåt. På smala kort kan du välja en dag och se dess avresor i en kompakt lista. Lägg till en eller flera engångs- eller återkommande avresetider per dag. Du kan ändra eller ta bort en enskild lokal avresa eller en hel serie. De sparas i bilens egen Home Assistant-kalender; Google Kalender ändras inte. Avresor från Google och veckoschemat kan också visas. Planerade starttider bygger på den aktuella utetemperaturen och kan ändras när temperaturen ändras.
+Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som block på en tidsaxel och kan bläddras framåt. På smala kort kan du välja en dag och se dess avresor i en kompakt lista. Lägg till en eller flera engångs- eller återkommande avresetider per dag. Du kan ändra eller ta bort en enskild lokal avresa eller en hel serie. De sparas i bilens egen Home Assistant-kalender; Google Kalender ändras inte. Avresor från Google och veckoschemat kan också visas. Planerade starttider är uppskattningar och kan ändras när temperaturen ändras.
 
 **Starta nu** kör värmaren under den tid som beräknas från utetemperaturen enligt [M Sveriges rekommendationer för motorns bästa utifrån Calix](https://msverige.se/allt-om-bilen/service-och-underhall/motorvarmare/). **Stoppa** avbryter en uppvärmning som integrationen själv styr. Integrationen väljer ingen uppvärmning över +10 °C och högst 180 minuter under −20 °C; källan anger inga tider utanför intervallet. En pågående värmning stoppas över +10 °C. Efter ett temperaturstopp kan schemalagd värmning starta igen vid +9,5 °C eller kallare om avresan fortfarande är aktuell, även efter omstart av Home Assistant; en manuellt startad värmning startar inte om automatiskt. En otillgänglig temperatursensor stoppar inte en pågående värmning. I integrationens inställningar för varje bil finns ett val (avstängt som standard) som låter schemalagd värmning fortsätta i 30 minuter efter avresan, utöver den beräknade uppvärmningen före avresan. Det förlänger inte körningar med **Starta nu**; temperaturspärren gäller fortfarande. Kalender, temperaturgivare och brytare ändras i integrationens inställningar.
 
-Om du väljer effekt- eller energisensor i integrationens inställningar visar kortet mätvärden och eventuella varningar. Se [exempel på energiövervakning](preview-energy.png) och integrationens instruktioner för sensorkrav och notisinställningar.
+Om du väljer effekt- eller energisensor i integrationens inställningar visar kortet mätvärden och eventuella varningar. Se integrationens instruktioner för sensorkrav och notisinställningar.
 
-Öppna [historiken](preview-history.png) för att se tidigare körningar och uppmätt energi när den finns samt summor per dag, vecka och månad. De täcker de 100 senaste registrerade avslutade körningarna. Saknade mätvärden, ofullständig täckning och körningar som passerar en periodgräns markeras; energin från en sådan körning räknas till slutdatumet och kan ge en för hög summa i slutperioden. Integrationen börjar samla historik från version 0.7.0.
+Öppna historiken för att se tidigare körningar och uppmätt energi när den finns samt summor per dag, vecka och månad. De täcker de 1 000 senaste registrerade avslutade körningarna. Saknade mätvärden, ofullständig täckning och körningar som passerar en periodgräns markeras; energin från en sådan körning räknas till slutdatumet och kan ge en för hög summa i slutperioden. Integrationen börjar samla historik från version 0.7.0.
 
 Prova start och avstängning på den faktiska utrustningen. En oberoende maxtimer rekommenderas om Home Assistant inte kan kommunicera med brytaren.
+
+Du kan välja en väderentitet med timprognoser. Kalendern visar då uppskattade tider baserade på prognosen och märker ut källan. Saknas prognos används aktuell uppmätt temperatur. Prognosen påverkar bara visningen: den faktiska styrningen använder fortfarande temperatursensorn. Användarens behörighet till väderentiteten kontrolleras.
+
+Med **Hoppa över nästa** hoppar du över nästa avresa utan att ändra kalendern. Du kan även pausa automatisk värmning per bil och återuppta manuellt eller vid en vald tid. Paus stoppar en schemalagd körning som integrationen styr; en manuellt startad körning styrs separat. Valfria driftlarm varnar för problem med brytare, sensor och kalender i Home Assistant och via vald notismottagare. Gränsen för gammalt temperaturvärde kan ändras; saknad rapporteringstid räknas inte som ett gammalt värde.
+
+Välj vid behov ett fast elpris per kWh eller en prissensor och valuta. Om en sensor är vald används dess pris vid körningens slut; fast pris används inte som tyst reserv om sensorn saknas. Kostnaden är en **uppskattning**, inte en tidsfördelad faktisk elkostnad, och gamla körningar prissätts inte i efterhand. Saknade värden och blandade valutor markeras som ofullständiga.
 
 ## Licens
 
