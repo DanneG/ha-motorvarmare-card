@@ -4,6 +4,10 @@ English · [Svenska](docs/README.sv.md)
 
 A dashboard card for the engine heater integration. It shows heater status, outdoor temperature, the next departure and estimated start. Start or stop a heating session and plan departures in a browsable seven-day calendar. Multiple departure times can be added to the same day in the car's own calendar. The card follows Home Assistant's English or Swedish language setting.
 
+![Example of an earlier card version](docs/preview.png)
+
+*The image shows an earlier version. Its appearance and heating times are outdated.*
+
 ## Installation
 
 First install the separate [Engine Heater integration](https://github.com/DanneG/ha-motorvarmare) and configure a car with a switch and outdoor sensor. Then add `https://github.com/DanneG/ha-motorvarmare-card` as a custom repository with category **Dashboard** in Marketplace or HACS and install it. Reload the browser, add **Motorvärmare** to a dashboard, and select the car's status entity. Repeat for additional cars.

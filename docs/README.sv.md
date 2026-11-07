@@ -4,6 +4,10 @@
 
 Kortet visar motorvärmarens status, utetemperatur, nästa avresa och beräknad starttid. Du kan starta eller stoppa en uppvärmning och bläddra framåt i kalendern. Flera avresor kan läggas till samma dag i bilens egen kalender. Kortet följer Home Assistants svenska eller engelska språkval.
 
+![Exempel på en tidigare version av kortet](preview.png)
+
+*Bilden visar en äldre version. Utseendet och värmetiderna i bilden är inte aktuella.*
+
 ## Installera
 
 Installera först [Motorvärmare-integrationen](https://github.com/DanneG/ha-motorvarmare) och konfigurera en bil med brytare och utetemperatursensor. Installera sedan `https://github.com/DanneG/ha-motorvarmare-card` som ett eget förråd av typen **Dashboard** i Marketplace eller HACS. Uppdatera webbläsaren, lägg till kortet **Motorvärmare** på en kontrollpanel och välj bilens statusentitet. Upprepa för ytterligare bilar.
