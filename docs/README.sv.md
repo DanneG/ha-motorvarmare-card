@@ -18,7 +18,7 @@ För att se flera bilar tillsammans, lägg till **Motorvärmare – översikt** 
 
 ## Användning
 
-Överst ser du nästa avresa, planerad start, utetemperatur och gångtid. Växla mellan **Kalender**, **Energi** och **Inställningar**. Under **Fler åtgärder** kan du bland annat hoppa över en avresa eller pausa; aktiva pauser och larm är fortsatt synliga.
+Överst ser du nästa avresa och, när schemat ger underlag, en tidslinje med beräknad start, avresa och stopp. Utetemperatur och gångtid visas också. Växla mellan **Kalender**, **Energi** och **Inställningar**. Under **Fler åtgärder** kan du bland annat hoppa över en avresa eller pausa; aktiva pauser och larm är fortsatt synliga.
 
 Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som block på en tidsaxel och kan bläddras framåt. På smala kort kan du välja en dag och se dess avresor i en kompakt lista. Lägg till en eller flera engångs- eller återkommande avresetider per dag. Du kan ändra eller ta bort en enskild lokal avresa eller en hel serie. De sparas i bilens egen Home Assistant-kalender; Google Kalender ändras inte. Avresor från Google och veckoschemat kan också visas. Planerade starttider är uppskattningar och kan ändras när temperaturen ändras.
 
@@ -26,7 +26,7 @@ Kalendern visar sju lokala kalenderdagar med de beräknade uppvärmningarna som 
 
 Om du väljer en effektsensor i integrationens inställningar visar kortet aktuell effekt, uppskattad energiförbrukning och eventuella varningar. Energin beräknas utifrån effekten över tid; du behöver ingen separat energisensor. Se integrationens instruktioner för sensorkrav och notisinställningar.
 
-Öppna historiken för att se tidigare körningar och uppskattad energi när den finns samt summor per dag, vecka och månad. De täcker de 1 000 senaste registrerade avslutade körningarna. Saknade mätvärden, ofullständig täckning och körningar som passerar en periodgräns markeras; energin från en sådan körning räknas till slutdatumet och kan ge en för hög summa i slutperioden. Integrationen börjar samla historik från version 0.7.0.
+I energivyn ser du aktuell effekt, uppskattad energi och sammanfattningar för aktuell dag, vecka och månad när det finns underlag. Öppna historiken för att se tidigare körningar och bläddra bland dagliga, veckovisa och månatliga perioder. De täcker de 1 000 senaste registrerade avslutade körningarna. Saknade mätvärden, ofullständig täckning och körningar som passerar en periodgräns markeras; energin från en sådan körning räknas till slutdatumet och kan ge en för hög summa i slutperioden. Integrationen börjar samla historik från version 0.7.0.
 
 Prova start och avstängning på den faktiska utrustningen. En oberoende maxtimer rekommenderas om Home Assistant inte kan kommunicera med brytaren.
 

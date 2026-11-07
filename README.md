@@ -18,7 +18,7 @@ To see several cars together, add **Motorvärmare – översikt** and choose eac
 
 ## Using the card
 
-The top of the card highlights the next departure, planned start, outdoor temperature and heating time. Use **Calendar**, **Energy** and **Settings** to switch views. Less frequent controls such as skipping or pausing a departure are under **More actions**; active pauses and alerts remain visible.
+The top of the card highlights the next departure and, when the schedule supports it, a timeline for the estimated start, departure and stop. Outdoor temperature and heating time remain visible. Use **Calendar**, **Energy** and **Settings** to switch views. Less frequent controls such as skipping or pausing a departure are under **More actions**; active pauses and alerts remain visible.
 
 The calendar shows each estimated heating period on a seven-day time grid and lets you browse forward. On narrow cards, select a day to see its departures in a compact list. Add one or more departure times per day, as one-time or recurring events. You can edit or remove one local occurrence or an entire series. These are stored in the car's own Home Assistant calendar; Google Calendar is not modified. Google Calendar and weekly-schedule departures can also be displayed. Planned start times are estimates and can change as the temperature changes.
 
@@ -26,7 +26,7 @@ The calendar shows each estimated heating period on a seven-day time grid and le
 
 If an optional power sensor is configured in the integration, the card displays current power, estimated energy use and alerts. Energy is calculated from power readings over time; a separate energy sensor is not needed. See the integration instructions for sensor requirements and notification settings.
 
-Open the heating history to see recent sessions and their estimated energy when available, plus daily, weekly and monthly summaries. They cover the latest 1,000 recorded completed sessions. A period crossing, missing energy reading or incomplete coverage is marked; energy from a crossing session is assigned to its end date and can make that period's sum too high. The integration starts collecting history from version 0.7.0.
+The Energy view shows current power, estimated session energy and summaries for the current day, week and month when data is available. Open the heating history to see earlier sessions and browse daily, weekly and monthly periods. They cover the latest 1,000 recorded completed sessions. A period crossing, missing energy reading or incomplete coverage is marked; energy from a crossing session is assigned to its end date and can make that period's sum too high. The integration starts collecting history from version 0.7.0.
 
 Test start and stop with the actual equipment. An independent maximum-run timer is recommended in case Home Assistant cannot communicate with the switch.
 
