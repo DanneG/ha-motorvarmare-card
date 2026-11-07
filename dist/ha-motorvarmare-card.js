@@ -99,6 +99,8 @@ MV_I18N.sv.seriesWarning="Om du ändrar tid eller upprepning tas tidigare ändri
 MV_I18N.sv.seriesConfirm="Jag förstår att ändringar och undantag kan tas bort"; MV_I18N.en.seriesConfirm="I understand that changes and exceptions may be removed";
 MV_I18N.sv.seriesConfirmRequired="Bekräfta informationen om serien innan du sparar."; MV_I18N.en.seriesConfirmRequired="Confirm the information about the series before saving.";
 MV_I18N.sv.ruleUnsupported="Serien kan inte redigeras här. Uppdatera integrationen eller använd en kalender som stöder schemat."; MV_I18N.en.ruleUnsupported="This series cannot be edited here. Update the integration or use a calendar that supports the schedule.";
+Object.assign(MV_I18N.sv,{viewNavigation:"Välj vy",moreActions:"Fler åtgärder",lessActions:"Färre åtgärder",shortEstimate:"Värmetiderna uppskattas utifrån aktuell temperatur.",shortForecast:"Prognos används när den finns. Styrningen använder uppmätt temperatur.",energyOverview:"Energianvändning",energyOverviewHint:"Energiförbrukningen uppskattas utifrån effekten över tid.",energySetup:"Välj en effektsensor i integrationens inställningar för att visa energianvändning."});
+Object.assign(MV_I18N.en,{viewNavigation:"Choose view",moreActions:"More actions",lessActions:"Fewer actions",shortEstimate:"Heating times are estimated from the current temperature.",shortForecast:"Forecasts are used when available. Control uses the measured temperature.",energyOverview:"Energy use",energyOverviewHint:"Energy use is estimated from power readings over time.",energySetup:"Select a power sensor in the integration settings to see energy use."});
 Object.assign(MV_I18N.sv,{skipNext:"Hoppa över nästa",pause:"Pausa",resume:"Återuppta",paused:"Pausad",pauseUntil:"Pausa till",savePause:"Spara paus",forecast:"Prognos",currentTemperature:"Aktuell temperatur",cost:"Uppskattad kostnad",costIncomplete:"kostnad ofullständig",startsIn:"Startar om",heatingUntil:"Värmer till",overTen:"Ingen värmning över +10 °C",calendarTab:"Kalender",energyTab:"Energi",settingsTab:"Inställningar",carOverview:"Motorvärmare – bilar",addCars:"Välj bilarnas statusentiteter",chooseCar:"Välj bil",backToCars:"Alla bilar",noCars:"Lägg till minst en bil i kortets inställningar."});
 Object.assign(MV_I18N.en,{skipNext:"Skip next",pause:"Pause",resume:"Resume",paused:"Paused",pauseUntil:"Pause until",savePause:"Save pause",forecast:"Forecast",currentTemperature:"Current temperature",cost:"Estimated cost",costIncomplete:"cost incomplete",startsIn:"Starts in",heatingUntil:"Heating until",overTen:"No heating above +10 °C",calendarTab:"Calendar",energyTab:"Energy",settingsTab:"Settings",carOverview:"Engine heaters",addCars:"Select car status entities",chooseCar:"Select car",backToCars:"All cars",noCars:"Add at least one car in the card settings."});
 MV_I18N.sv.forecastHint="Tiderna uppskattas med väderprognos där den finns, annars aktuell temperatur. Värmaren styrs alltid av den uppmätta temperaturen.";
@@ -181,14 +183,14 @@ const mvPatch = (root, html) => {
 
 class MotorvarmareCard extends HTMLElement {
   constructor() {
-    super(); this.attachShadow({mode:"open"}); this._config = {}; this._showWeek = false; this._showHistory = false; this._historyLimit = 10; this._draft = null; this._pending = false;
+    super(); this.attachShadow({mode:"open"}); this._config = {}; this._showWeek = false; this._showHistory = true; this._historyLimit = 10; this._draft = null; this._pending = false;
     this._selectedDay = null; this._calendarTime = "07:00"; this._initialCalendarScroll = null;
     this._windowOffset = 0; this._windowEvents = null; this._windowLoading = false; this._windowError = null; this._windowUnsupported = false; this._windowCalendarError = false; this._windowRequest = 0; this._windowStart = null; this._windowOverride = false; this._todayBaseSignature = null;
     this._forecastRequestSignature = null;
     this._forecastEnabled = null;
     this._repeatFreq = "NONE"; this._repeatInterval = 1; this._repeatDays = []; this._repeatUntil = ""; this._deleteRecurrence = null; this._editChoice=null; this._editContext=null; this._editDate=""; this._editSummary=""; this._editAcknowledged=false;
     this._totalPeriod = "daily"; this._totalLimit = 7;
-    this._pauseDraft = null; this._showPauseDate = false;
+    this._pauseDraft = null; this._showPauseDate = false; this._showMoreActions = false;
     this._activeView = "calendar";
     this._calendarAnchored = false; this._calendarUserScrolled = false; this._desktopPosition = null;
     this._mobileDay = null; this._mobileDayChosen = false;
@@ -232,8 +234,8 @@ class MotorvarmareCard extends HTMLElement {
     if (this._config.status_entity !== config.status_entity) {
       this._draft = null; this._selectedDay = null; this._editChoice=null; this._editContext=null; this._initialCalendarScroll = null;
       this._calendarAnchored = false; this._calendarUserScrolled = false; this._desktopPosition = null;
-      this._mobileDay = null; this._mobileDayChosen = false; this._showHistory = false; this._historyLimit = 10;
-      this._pauseDraft = null; this._showPauseDate = false;
+      this._mobileDay = null; this._mobileDayChosen = false; this._showHistory = true; this._historyLimit = 10;
+      this._pauseDraft = null; this._showPauseDate = false; this._showMoreActions = false;
       this._activeView = "calendar";
       this._windowOffset = 0; this._windowEvents = null; this._windowLoading = false; this._windowError = null; this._windowCalendarError = false; this._windowStart = null; this._windowOverride = false; this._todayBaseSignature = null; this._windowRequest++;
       this._forecastRequestSignature = null;
@@ -490,9 +492,9 @@ class MotorvarmareCard extends HTMLElement {
       showPower && a.energy_monitor_status === "power_unavailable" ? t("powerUnavailable") : null,
       showEnergy && a.energy_sensor_available === false ? t(hasSessionEnergy ? "energyUnavailable" : "energyUnavailableEmpty") : null,
       showEnergy && a.energy_session_status === "incomplete" ? t("energyIncomplete") : null,
-      showEnergy && a.energy_session_status === "no_session" && a.energy_sensor_available !== false ? t("energyNoSession") : null,
       showPower && a.energy_monitor_status === "waiting" && sw?.state === "on" ? t("powerWaiting") : null,
     ].filter(Boolean);
+    const energyInfo = showEnergy && a.energy_session_status === "no_session" && a.energy_sensor_available !== false ? t("energyNoSession") : null;
     const weekRows = e.weekly.map((day, i) => {
       const t = h.states[day.time], s = h.states[day.enabled];
       const availableTime = mvUsable(t), availableSwitch = mvUsable(s) && ["on","off"].includes(s.state);
@@ -683,6 +685,68 @@ class MotorvarmareCard extends HTMLElement {
           .mobile-event strong{font-weight:600}.mobile-event.marker-event{background:var(--secondary-background-color);border-left-color:var(--secondary-text-color);color:var(--primary-text-color)}
           .mobile-source{font-size:11px;margin-top:3px;opacity:.8}.mobile-remove{color:inherit;min-height:40px;padding:6px;white-space:nowrap;font-size:12px}
         }
+
+        /* A quiet, theme-aware hierarchy keeps the next trip and action first. */
+        ha-card{border-radius:var(--ha-card-border-radius,16px)}
+        .wrap{padding:22px;container-type:inline-size}
+        .head{gap:14px;margin:0 0 20px;align-items:center}
+        .icon{flex:none;width:48px;height:48px;border-radius:15px;background:rgba(var(--rgb-primary-color,3,169,244),.13)}
+        .icon ha-icon{--mdc-icon-size:25px}
+        .title{font-size:18px;line-height:1.25;font-weight:700;letter-spacing:-.01em}
+        .status{font-size:13px;line-height:1.35;margin-top:4px;overflow-wrap:anywhere}
+        .badge{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;font-size:11px;letter-spacing:.01em}
+        .badge::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+        .stats{gap:10px;padding:0;border:0;grid-template-columns:repeat(2,minmax(0,1fr))}
+        .stats>div{min-width:0;padding:10px 12px;border-radius:12px;background:var(--secondary-background-color)}
+        .stats>div:nth-child(-n+2){padding:14px 12px;background:rgba(var(--rgb-primary-color,3,169,244),.10)}
+        .stats .label,.energy-metrics .label{line-height:1.35;font-size:12px;margin:0 0 6px}
+        .stats .value{line-height:1.35;font-weight:650;font-size:15px}
+        .stats>div:nth-child(-n+2) .value{font-size:16px;letter-spacing:-.01em}
+        .stats .power-stat,.stats .energy-stat{background:var(--secondary-background-color)}
+        .notice{line-height:1.45;padding:10px 12px;border-radius:10px;background:rgba(var(--rgb-error-color,244,67,54),.1)}
+        .quick-actions{gap:10px;margin-top:16px}
+        .quick-actions>button:first-child:not(.mobile-add){min-height:44px;padding-inline:16px}
+        .quick-actions .hint{line-height:1.4}
+        #stop-now{background:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:650}
+        .schedule-actions{gap:2px;margin-top:7px}
+        .schedule-actions button{min-height:44px;padding:8px 10px;color:var(--secondary-text-color);font-size:12px}
+        .schedule-actions button:hover{color:var(--primary-color);background:rgba(var(--rgb-primary-color,3,169,244),.08)}
+        .main-tabs{padding:4px;gap:4px;margin-top:20px;border:0;border-radius:12px;background:var(--secondary-background-color)}
+        .main-tabs button{min-height:44px;border:0;border-radius:9px;padding:8px 5px;font-size:13px;font-weight:600;line-height:1.2}
+        .main-tabs button[aria-pressed=true]{color:var(--primary-color);background:var(--card-background-color);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+        .main-panel{min-width:0}.calendar{margin-top:20px}
+        .calendar-title{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:15px;line-height:1.3;margin:0 0 4px}
+        .calendar-title button{flex:none;min-height:44px;padding:8px 10px;font-size:13px}
+        .calendar-subtitle{font-size:12px;line-height:1.5;margin-bottom:12px}
+        .calendar-nav{gap:5px;margin:8px 0 12px}
+        .calendar-nav button{min-height:44px;border-radius:10px;background:var(--secondary-background-color)}
+        .calendar-range{font-size:13px;font-weight:650}
+        .cal-scroll,.mobile-calendar{border-radius:14px}
+        .cal-event,.mobile-event{background:rgba(var(--rgb-primary-color,3,169,244),.18);border-left-color:var(--primary-color);color:var(--primary-text-color)}
+        .cal-event.marker-event,.mobile-event.marker-event{background:var(--secondary-background-color);border-left-color:var(--secondary-text-color)}
+        .cal-editor{border-radius:12px;padding:14px}
+        .energy-overview{margin-top:20px}.energy-overview .sectionhead{font-size:15px}
+        .energy-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+        .energy-metrics>div{padding:14px 12px;min-width:0;border-radius:12px;background:var(--secondary-background-color)}
+        .energy-metrics .value{font-size:16px;line-height:1.35;overflow-wrap:anywhere;font-weight:650}
+        .history-section{border-top:1px solid var(--divider-color);padding-top:8px}
+        button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}
+        .stats>div.post-summary{grid-column:1/-1;display:flex;gap:7px;align-items:baseline;padding:1px 2px;background:transparent}
+        .post-summary .label,.post-summary .value{margin:0;font-size:12px;color:var(--secondary-text-color);font-weight:500}
+        button,input[type=datetime-local],input[type=time],.cal-editor input:not([type=checkbox]),.cal-editor select{min-height:44px}
+        .mobile-event button,.day-toggle{min-height:44px}
+        .secondary-actions{display:flex;align-items:center;gap:8px;margin-top:5px}
+        .secondary-actions button{min-height:44px;color:var(--secondary-text-color);font-size:12px;padding:8px 6px}
+        .secondary-actions .resume-action{color:var(--primary-color);font-weight:650}
+        @container (max-width: 340px){.mobile-days{grid-template-columns:repeat(4,minmax(0,1fr))}}
+        @container (max-width: 420px){
+          .head{gap:10px}.icon{width:42px;height:42px;border-radius:13px}.icon ha-icon{--mdc-icon-size:22px}
+          .title{font-size:16px}.badge{font-size:10px;padding:6px 8px}.status{font-size:12px}
+          .stats{gap:8px}.stats>div,.stats>div:nth-child(-n+2){padding:11px 10px}
+          .stats .value,.stats>div:nth-child(-n+2) .value{font-size:14px}
+          .quick-actions .hint{min-width:120px}.calendar-title{font-size:14px}
+          input:not([type=checkbox]),select{font-size:16px}
+        }
       </style>
       <ha-card><div class="wrap">
         <div class="head"><div class="icon"><ha-icon icon="mdi:car-defrost-front"></ha-icon></div><div class="headtext"><div class="title">${mvEscape(title)}</div><div class="status">${mvEscape(statusText)}</div></div><span class="badge ${sw?.state === "on" ? "on" : ""}">${t("heater")} ${heating}</span></div>
@@ -691,9 +755,7 @@ class MotorvarmareCard extends HTMLElement {
           <div><div class="label">${t("plannedStart")}</div><div class="value">${mvEscape(this._date(a.planned_start))}</div></div>
           <div><div class="label">${t("temperature")}</div><div class="value">${mvEscape(temperature)}</div></div>
           <div><div class="label">${t(a.post_departure_minutes > 0 ? "preheatDuration" : "duration")}</div><div class="value">${currentRuntime !== null ? `${mvEscape(currentRuntime)} min` : a.next_departure && Number.isFinite(a.duration_minutes) ? `${mvEscape(a.duration_minutes)} min` : "–"}</div></div>
-          ${a.post_departure_minutes > 0 ? `<div><div class="label">${t("postDeparture")}</div><div class="value">${mvEscape(a.post_departure_minutes)} min</div></div>` : ""}
-          ${showPower ? `<div class="power-stat"><div class="label">${t("currentPower")}</div><div class="value">${mvEscape(measuredPower)}</div></div>` : ""}
-          ${showEnergy ? `<div class="energy-stat"><div class="label">${t("sessionEnergy")}</div><div class="value">${mvEscape(sessionEnergy)}</div></div>` : ""}
+          ${a.post_departure_minutes > 0 ? `<div class="post-summary"><span class="label">${t("postDeparture")}</span><span class="value">${mvEscape(a.post_departure_minutes)} min</span></div>` : ""}
         </div>
         ${a.alarm_active === true && showPower && a.energy_monitor_status === "low_power" && sw?.state === "on" ? `<div class="notice power-alarm" role="alert">${t("powerAlarm")}</div>` : ""}
         ${meterWarnings.map(message => `<div class="hint meter-warning">${mvEscape(message)}</div>`).join("")}
@@ -702,16 +764,16 @@ class MotorvarmareCard extends HTMLElement {
         ${Array.isArray(a.operational_problems) ? a.operational_problems.filter(problem=>Object.prototype.hasOwnProperty.call(MV_I18N[mvLang(h)],problem)).map(problem=>`<div class="notice operational-problem" role="status">${mvEscape(t(problem))}</div>`).join("") : ""}
         ${this._actionError ? `<div class="notice" role="alert">${mvEscape(this._actionError)}</div>` : ""}
         <div class="quick-actions">${a.owned ? `<button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button><span class="hint">${a.active_until ? `${t("plannedStop")} ${mvEscape(this._date(a.active_until))}` : t("owned")}</span>` : `<button class="primary" id="start-now" ${!startOk || this._pending ? "disabled" : ""}>${t("runNow")}</button><span class="hint">${sw?.state === "on" ? t("external") : sw?.state !== "off" ? t("unknownSwitch") : currentRuntime === null ? t("tempUnavailable") : currentRuntime <= 0 ? t("noRuntime") : `${t("runtimeFor")} ${mvEscape(currentRuntime)} min; ${t("runtimeOff")}`}</span>`}</div>
-        ${skipButton || pauseSwitch ? `<div class="quick-actions schedule-actions">${skipButton ? `<button id="skip-next" ${!a.next_departure || this._pending || skipButton.state === "unavailable" ? "disabled" : ""}>${t("skipNext")}</button>` : ""}${pauseSwitch ? `<button id="pause-automation" ${this._pending || pauseSwitch.state === "unavailable" ? "disabled" : ""}>${a.automation_paused ? t("resume") : t("pause")}</button>${pauseDate && !a.automation_paused ? `<button id="show-pause-date">${t("pauseUntil")}</button>` : ""}` : ""}</div>${this._showPauseDate && pauseDate && !a.automation_paused ? `<div class="quick-actions pause-editor"><label for="pause-until">${t("pauseUntil")}</label><input id="pause-until" type="datetime-local" value="${mvEscape(this._pauseDraft ?? this._inputDate(pauseDate.state))}"><button id="save-pause">${t("savePause")}</button></div>` : ""}${a.automation_paused && a.pause_until ? `<div class="hint">${t("pauseUntil")} ${mvEscape(this._date(a.pause_until))}</div>` : ""}` : ""}
-        <div class="main-tabs" role="tablist">${[["calendar","calendarTab"],["energy","energyTab"],["settings","settingsTab"]].map(([key,label])=>`<button role="tab" data-main-tab="${key}" aria-selected="${this._activeView===key}">${t(label)}</button>`).join("")}</div>
-        <div class="main-panel" data-main-panel="calendar" ${this._activeView!=="calendar" ? "hidden" : ""}><div class="calendar"><div class="calendar-title">${t("seven")} <button id="new-departure" ${!calendarOk || this._pending ? "disabled" : ""}>＋ ${t("addDay")}</button></div><div class="calendar-subtitle">${t(a.weather_enabled ? "forecastHint" : "estimate")}${hasOverlap ? ` ${t("overlap")}` : ""} <span class="desktop-hint">${t("gridHint")}</span><span class="mobile-hint">${t("mobileHint")}</span></div>${calendarNav}${scheduleBody}${!calendarOk ? `<div class="hint">${t("updateAdd")}</div>` : ""}</div></div>
+        ${skipButton || pauseSwitch ? `<div class="secondary-actions"><button id="more-actions" aria-expanded="${this._showMoreActions}">${this._showMoreActions ? t("lessActions") : t("moreActions")} <span aria-hidden="true">${this._showMoreActions ? "⌃" : "⌄"}</span></button>${a.automation_paused && pauseSwitch ? `<button id="pause-automation" class="resume-action" ${this._pending || pauseSwitch.state === "unavailable" ? "disabled" : ""}>${t("resume")}</button>` : ""}</div>${this._showMoreActions ? `<div class="quick-actions schedule-actions">${skipButton ? `<button id="skip-next" ${!a.next_departure || this._pending || skipButton.state === "unavailable" ? "disabled" : ""}>${t("skipNext")}</button>` : ""}${pauseSwitch && !a.automation_paused ? `<button id="pause-automation" ${this._pending || pauseSwitch.state === "unavailable" ? "disabled" : ""}>${t("pause")}</button>${pauseDate ? `<button id="show-pause-date">${t("pauseUntil")}</button>` : ""}` : ""}</div>${this._showPauseDate && pauseDate && !a.automation_paused ? `<div class="quick-actions pause-editor"><label for="pause-until">${t("pauseUntil")}</label><input id="pause-until" type="datetime-local" value="${mvEscape(this._pauseDraft ?? this._inputDate(pauseDate.state))}"><button id="save-pause">${t("savePause")}</button></div>` : ""}` : ""}${a.automation_paused && a.pause_until ? `<div class="hint">${t("pauseUntil")} ${mvEscape(this._date(a.pause_until))}</div>` : ""}` : ""}
+        <div class="main-tabs" role="group" aria-label="${t("viewNavigation")}">${[["calendar","calendarTab"],["energy","energyTab"],["settings","settingsTab"]].map(([key,label])=>`<button data-main-tab="${key}" aria-pressed="${this._activeView===key}">${t(label)}</button>`).join("")}</div>
+        <div class="main-panel" data-main-panel="calendar" ${this._activeView!=="calendar" ? "hidden" : ""}><div class="calendar"><div class="calendar-title">${t("seven")} <button id="new-departure" ${!calendarOk || this._pending ? "disabled" : ""}>＋ ${t("addDay")}</button></div><div class="calendar-subtitle">${t(a.weather_enabled ? "shortForecast" : "shortEstimate")}${hasOverlap ? ` ${t("overlap")}` : ""}</div>${calendarNav}${scheduleBody}${!calendarOk ? `<div class="hint">${t("updateAdd")}</div>` : ""}</div></div>
         <div class="main-panel" data-main-panel="settings" ${this._activeView!=="settings" ? "hidden" : ""}>
         <div class="section"><div class="sectionhead">${t("single")}</div><div class="manual"><div class="field"><label for="manual">${t("dateTime")}</label><input id="manual" type="datetime-local" value="${mvEscape(inputValue)}" ${!manualOk || this._pending ? "disabled" : ""}></div><div class="actions"><button class="primary" id="save" ${!manualOk || this._pending ? "disabled" : ""}>${t("save")}</button><button id="clear" ${!clearOk || this._pending ? "disabled" : ""}>${t("clear")}</button></div></div></div>
         <div class="section"><button class="expand" id="week" aria-expanded="${this._showWeek}"><span>${t("weekly")}</span><span class="small">${this._showWeek ? t("hide") : t("show")}</span></button>${this._showWeek ? weekRows : ""}</div>
         ${(!e.manual_entity || !e.weekly.some(x=>x.time && x.enabled)) ? `<div class="hint">${t("missingEntities")}</div>` : ""}
         <div class="hint">${t("configBefore")}<a href="/config/integrations/integration/motorvarmare" style="color:var(--primary-color)">${t("configLink")}</a>${t("configAfter")}</div>
         </div>
-        <div class="main-panel" data-main-panel="energy" ${this._activeView!=="energy" ? "hidden" : ""}><div class="section history-section"><button class="expand" id="history-toggle" aria-expanded="${this._showHistory}"><span>${t("history")}${historyAvailable && history.length ? ` (${history.length})` : ""}</span><span class="small">${this._showHistory ? t("hide") : t("show")}</span></button>${this._showHistory ? `${totalsBody}${historyBody}` : ""}</div></div>
+        <div class="main-panel" data-main-panel="energy" ${this._activeView!=="energy" ? "hidden" : ""}><div class="section energy-overview"><div class="sectionhead">${t("energyOverview")}</div>${showPower || showEnergy ? `<div class="energy-metrics">${showPower ? `<div class="power-stat"><div class="label">${t("currentPower")}</div><div class="value">${mvEscape(measuredPower)}</div></div>` : ""}${showEnergy ? `<div class="energy-stat"><div class="label">${t("sessionEnergy")}</div><div class="value">${mvEscape(sessionEnergy)}</div></div>` : ""}</div><div class="hint">${t("energyOverviewHint")}</div>${energyInfo ? `<div class="hint energy-info">${mvEscape(energyInfo)}</div>` : ""}` : `<div class="hint">${t("energySetup")}</div>`}</div><div class="section history-section"><button class="expand" id="history-toggle" aria-expanded="${this._showHistory}"><span>${t("history")}${historyAvailable && history.length ? ` (${history.length})` : ""}</span><span class="small">${this._showHistory ? t("hide") : t("show")}</span></button>${this._showHistory ? `${totalsBody}${historyBody}` : ""}</div></div>
       </div></ha-card>`;
     mvPatch(this.shadowRoot, newMarkup);
     const newScroll=this.shadowRoot.querySelector(".cal-scroll");
@@ -746,6 +808,7 @@ class MotorvarmareCard extends HTMLElement {
     this.shadowRoot.querySelectorAll("[data-main-tab]").forEach(el=>el.addEventListener("click",()=>{this._activeView=el.dataset.mainTab;this._render();}, {signal:renderSignal}));
     this.shadowRoot.querySelector("#new-departure")?.addEventListener("click",()=>this._selectCalendarDay(this._dayKeys()[0]), {signal:renderSignal});
     this.shadowRoot.querySelector("#skip-next")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.skip_next}), {signal:renderSignal});
+    this.shadowRoot.querySelector("#more-actions")?.addEventListener("click", () => {this._showMoreActions=!this._showMoreActions;this._render();}, {signal:renderSignal});
     this.shadowRoot.querySelector("#pause-automation")?.addEventListener("click", async () => {if (await this._call("switch", a.automation_paused ? "turn_off" : "turn_on", {entity_id:e.automation_paused})) {this._pauseDraft=null;this._showPauseDate=false;this._render();}}, {signal:renderSignal});
     this.shadowRoot.querySelector("#show-pause-date")?.addEventListener("click", () => {this._showPauseDate=!this._showPauseDate;this._render();}, {signal:renderSignal});
     this.shadowRoot.querySelector("#pause-until")?.addEventListener("input", event => {this._pauseDraft=event.target.value;}, {signal:renderSignal});

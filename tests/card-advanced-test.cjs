@@ -150,7 +150,7 @@ async function main() {
     assert.deepEqual((await page.evaluate(()=>window.calls.shift())).ws,{type:'calendar/event/delete',entity_id:'calendar.car',uid:'series'});
     // Aggregates distinguish missing measurements and incomplete periods.
     await card.locator('[data-main-tab="energy"]').click();
-    await card.locator('#history-toggle').click();
+    if (await card.locator('#history-toggle').getAttribute('aria-expanded')==='false') await card.locator('#history-toggle').click();
     assert.match(await card.locator('.history-totals').innerText(),/1,25 kWh/);
     if (process.env.MOTORVARMARE_SCREENSHOTS) await card.locator('.history-totals').screenshot({path:path.join(process.env.MOTORVARMARE_SCREENSHOTS,'history.png')});
     assert.match(await card.locator('.history-totals').innerText(),/Inget mätvärde.*ofullständigt/s);

@@ -36,6 +36,7 @@ async function main() {
       window.changeAttrs = values=>{Object.assign(window.hass.states['sensor.car_status'].attributes,values); card.hass={...window.hass};};
     });
     const card=page.locator('motorvarmare-card');
+    await card.locator('[data-main-tab="energy"]').click();
     assert.equal(await card.locator('.power-stat').count(),0,'Power is optional');
     assert.equal(await card.locator('.energy-stat').count(),0,'Energy is optional');
     await page.evaluate(()=>window.changeAttrs({power_sensor_configured:true,energy_sensor_configured:true,power_w:1185.2,session_energy_kwh:0.137,energy_sensor_available:true,energy_monitor_status:'ok',alarm_active:false}));
@@ -46,6 +47,10 @@ async function main() {
     await page.evaluate(()=>window.changeAttrs({power_w:0,energy_monitor_status:'low_power',alarm_active:true}));
     assert.match(await card.locator('.power-stat').innerText(),/0\s*W/,'Zero must be displayed as a measurement');
     assert.match(await card.locator('.power-alarm').innerText(),/Kontrollera att motorvärmarkabeln är ansluten/);
+    // An actionable alert must remain visible even when the energy view is not selected.
+    await card.locator('[data-main-tab="calendar"]').click();
+    assert.equal(await card.locator('.power-alarm').isVisible(),true,'Low-power alarm must be visible outside the energy view');
+    await card.locator('[data-main-tab="energy"]').click();
     if (process.env.MOTORVARMARE_ALARM_PREVIEW_PATH) await page.screenshot({path:process.env.MOTORVARMARE_ALARM_PREVIEW_PATH,fullPage:true});
     await page.evaluate(()=>{window.hass.states['switch.heater'].state='off';window.changeAttrs({});});
     assert.equal(await card.locator('.power-alarm').count(),0,'A stale alert must not say the heater is on after the switch turns off');

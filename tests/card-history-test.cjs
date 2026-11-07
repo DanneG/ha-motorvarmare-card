@@ -38,7 +38,9 @@ async function main() {
     const card=page.locator('motorvarmare-card');
     await card.locator('[data-main-tab="energy"]').click();
     const toggle=card.locator('#history-toggle');
-    assert.equal(await toggle.getAttribute('aria-expanded'),'false');
+    assert.equal(await toggle.getAttribute('aria-expanded'),'true','History is visible by default');
+    await toggle.click();
+    assert.equal(await toggle.getAttribute('aria-expanded'),'false','History can be collapsed');
     await toggle.click();
     assert.match(await card.locator('.history-section').innerText(),/Uppdatera integrationen för att visa historiken/,'Older integrations should show update guidance');
     await page.evaluate(()=>window.changeHistory([]));

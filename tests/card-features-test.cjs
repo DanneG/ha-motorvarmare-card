@@ -41,7 +41,7 @@ async function main(){
     assert.match(await card.locator('.calendar').innerText(),/Spara eller avbryt ändringen/);
     await card.locator('[data-main-tab="energy"]').click();
     assert.equal(await card.locator('[data-main-panel="calendar"]').isVisible(),false);
-    await card.locator('#history-toggle').click();
+    if (await card.locator('#history-toggle').getAttribute('aria-expanded')==='false') await card.locator('#history-toggle').click();
     assert.match(await card.locator('.history-entry').innerText(),/Uppskattad kostnad.*3,00 SEK/);
     assert.match(await card.locator('.history-totals').innerText(),/kostnad ofullständig/);
     await card.locator('[data-main-tab="calendar"]').click();
@@ -50,6 +50,7 @@ async function main(){
     assert.equal(await card.locator('#repeat-frequency').inputValue(),'WEEKLY');
     await card.locator('#cancel-calendar').click();
     // Skip and a dated pause call the appropriate entities once.
+    await card.locator('#more-actions').click();
     await card.locator('#skip-next').click();
     assert.deepEqual((await page.evaluate(()=>window.calls.splice(0))),[{domain:'button',service:'press',data:{entity_id:'button.skip'}}]);
     await card.locator('#show-pause-date').click();
