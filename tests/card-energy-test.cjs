@@ -63,9 +63,9 @@ async function main() {
     assert.match(await card.locator('.wrap').innerText(),/Ingen energimätning för en körning ännu/);
     await page.evaluate(()=>{window.hass.locale.language='en';window.changeAttrs({power_w:null,session_energy_kwh:null,energy_sensor_available:false,energy_monitor_status:'waiting'});});
     assert.match(await card.locator('.power-stat').innerText(),/Current power/);
-    assert.match(await card.locator('.energy-stat').innerText(),/Energy, current\/last session/);
+    assert.match(await card.locator('.energy-stat').innerText(),/Estimated energy, current\/last session/);
     assert.match(await card.locator('.wrap').innerText(),/Waiting for power measurement/);
-    assert.match(await card.locator('.wrap').innerText(),/Energy sensor is unavailable/);
+    assert.match(await card.locator('.wrap').innerText(),/Energy calculation is unavailable/);
     await page.evaluate(()=>window.changeAttrs({power_sensor_configured:false,energy_sensor_configured:true,energy_sensor_available:true,energy_session_status:'complete',session_energy_kwh:0}));
     assert.equal(await card.locator('.power-stat').count(),0,'Power and energy sources are independently optional');
     assert.match(await card.locator('.energy-stat').innerText(),/0\.00\s*kWh/);
