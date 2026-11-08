@@ -34,7 +34,7 @@ Du kan välja en väderentitet med timprognoser. Kalendern visar då uppskattade
 
 Med **Hoppa över nästa** hoppar du över nästa avresa utan att ändra kalendern. Du kan även pausa automatisk värmning per bil och återuppta manuellt eller vid en vald tid. Paus stoppar en schemalagd körning som integrationen styr; en manuellt startad körning styrs separat. Valfria driftlarm varnar för problem med brytare, sensor och kalender i Home Assistant och via vald notismottagare. Gränsen för gammalt temperaturvärde kan ändras; saknad rapporteringstid räknas inte som ett gammalt värde.
 
-Välj vid behov ett fast elpris per kWh eller en prissensor och valuta. Om en sensor är vald används dess pris vid körningens slut; fast pris används inte som tyst reserv om sensorn saknas. Kostnaden är en **uppskattning**, inte en tidsfördelad faktisk elkostnad, och gamla körningar prissätts inte i efterhand. Saknade värden och blandade valutor markeras som ofullständiga.
+Välj vid behov ett fast elpris per kWh eller en prissensor och valuta. Med effektbaserad energi och en prissensor uppskattar integrationen kostnaden utifrån effekt och pris över tid. Vid avbrott i mätningen visas kostnaden som otillgänglig; fast pris används inte som tyst reserv. För en äldre kumulativ energisensor används priset vid körningens slut. Kostnaderna är uppskattningar och gamla körningar prissätts inte i efterhand. Saknade värden och blandade valutor markeras som ofullständiga. Om en fullständig tidigare körning och en planerad avresa finns kan energivyn visa en uppskattning för nästa värmning, baserad på den tidigare körningens medeleffekt och aktuellt pris. Nya historikposter visar även utetemperaturen vid start när den finns.
 
 ## Licens
 

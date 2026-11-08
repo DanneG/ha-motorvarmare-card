@@ -43,6 +43,24 @@ async function main() {
     assert.match(await card.locator('.power-stat').innerText(),/1\s?185,2\s*W/);
     assert.match(await card.locator('.energy-stat').innerText(),/0,137\s*kWh/);
     assert.equal(await card.locator('.power-alarm').count(),0);
+    await page.evaluate(()=>window.changeAttrs({
+      next_estimated_energy_kwh:1.2,next_estimated_cost:2.4,next_estimated_currency:'SEK',next_estimate_basis:'latest_complete_session_average',
+      heating_history:[{start:'2026-11-05T05:00:00Z',end:'2026-11-05T06:00:00Z',complete:true,duration_minutes:60,energy_kwh:0.5,temperature_at_start_c:-5.2}],
+      power_deviation_active:true,power_deviation_direction:'high'
+    }));
+    assert.match(await card.locator('.next-estimate').innerText(),/1,20\s*kWh/);
+    assert.match(await card.locator('.next-estimate').innerText(),/2,40\s*SEK/);
+    assert.match(await card.locator('.next-estimate').innerText(),/senaste fullständiga värmningen/);
+    assert.match(await card.locator('.history-entry').first().innerText(),/Utetemperatur vid start: −?[-−]?5,2\s*°C/);
+    assert.match(await card.locator('.power-deviation').innerText(),/högre än det inställda normalintervallet/);
+    await card.locator('[data-main-tab="calendar"]').click();
+    await card.locator('#open-calendar').click();
+    assert.match(await card.locator('#calendar-expanded').innerText(),/högre än det inställda normalintervallet/);
+    await card.locator('#close-calendar').click();
+    await card.locator('[data-main-tab="energy"]').click();
+    await page.evaluate(()=>window.changeAttrs({next_estimate_basis:null,power_deviation_active:false}));
+    assert.equal(await card.locator('.next-estimate').count(),0,'A forecast without a known basis must not be shown');
+    assert.equal(await card.locator('.power-deviation').count(),0);
     if (process.env.MOTORVARMARE_ENERGY_PREVIEW_PATH) await page.screenshot({path:process.env.MOTORVARMARE_ENERGY_PREVIEW_PATH,fullPage:true});
     await page.evaluate(()=>window.changeAttrs({power_w:0,energy_monitor_status:'low_power',alarm_active:true}));
     assert.match(await card.locator('.power-stat').innerText(),/0\s*W/,'Zero must be displayed as a measurement');
