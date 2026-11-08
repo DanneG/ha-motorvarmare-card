@@ -24,15 +24,15 @@ async function main() {
     });
     const card=page.locator('motorvarmare-card');
     const cases=[
-      [0,'0 min','0 min'],[30,'30 min','30 min'],[59,'59 min','59 min'],
+      [0,'0 min','0 min'],[30,'30 min','30 min'],[59,'59 min','59 min'],[59.6,'1 tim','1 h'],
       [60,'1 tim','1 h'],[61,'1 tim 1 min','1 h 1 min'],
       [90,'1 tim 30 min','1 h 30 min'],[180,'3 tim','3 h']
     ];
     for(const [minutes,sv,en] of cases) {
       for(const [language,wanted] of [['sv',sv],['en',en]]) {
         await page.evaluate(({minutes,language})=>window.update({current_duration_minutes:minutes},language),{minutes,language});
-        const summary=await card.locator('.summary-metrics').innerText();
-        assert.ok(summary.includes(wanted),`${language} summary for ${minutes} minutes must show ${wanted}: ${summary}`);
+        const summary=(await card.locator('.summary-metrics > span').nth(1).locator('strong').innerText()).trim();
+        assert.equal(summary,wanted,`${language} summary for ${minutes} minutes`);
         if(minutes>0) {
           const action=await card.locator('.quick-actions').first().innerText();
           assert.ok(action.includes(wanted),`${language} start explanation must show ${wanted}: ${action}`);
@@ -43,6 +43,9 @@ async function main() {
     await page.evaluate(()=>window.update({current_duration_minutes:null,duration_minutes:null,next_departure:null,planned_start:null},'sv'));
     const unavailable=await card.locator('.summary-metrics').innerText();
     assert.match(unavailable,/Värmetid\s*–/);
+    assert.equal(await card.locator('#start-now').isDisabled(),true);
+    await page.evaluate(()=>window.update({current_duration_minutes:-1},'sv'));
+    assert.match(await card.locator('.summary-metrics').innerText(),/Värmetid\s*–/);
     assert.equal(await card.locator('#start-now').isDisabled(),true);
 
     // Subsequent heating, the waiting countdown and stored history all use the
