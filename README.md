@@ -18,7 +18,7 @@ To see several cars together, add **Motorvärmare – översikt** and choose eac
 
 ## Using the card
 
-The top of the card highlights the next departure and, when the schedule supports it, a timeline for the estimated start, departure and stop. Outdoor temperature and heating time remain visible. Use **Calendar**, **Energy** and **Settings** to switch views. Less frequent controls such as skipping or pausing a departure are under **More actions**; active pauses and alerts remain visible.
+The top of the card highlights the next departure and, when the schedule supports it, a timeline for the estimated start, departure and stop. Outdoor temperature and heating time remain visible. Heating durations are displayed in hours and minutes. Use **Calendar**, **Energy** and **Settings** to switch views. Less frequent controls such as skipping or pausing a departure are under **More actions**; active pauses and alerts remain visible.
 
 Select **Open calendar** to see estimated heating periods in a larger seven-day time grid and browse forward. Click a time in the grid to choose a departure time, or open the departure list to review and edit local departures. On a phone, scroll sideways to see all days. The view contains the heater’s departures and estimated heating periods, including matching external calendar events. On narrow cards, select a day to see its departures in a compact list. Add one or more departure times per day, as one-time or recurring events. You can edit or remove one local occurrence or an entire series. These are stored in the car's own Home Assistant calendar; Google Calendar is not modified. Google Calendar and weekly-schedule departures can also be displayed. Planned start times are estimates and can change as the temperature changes.
 

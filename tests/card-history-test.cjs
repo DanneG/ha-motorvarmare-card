@@ -55,7 +55,7 @@ async function main() {
     assert.equal(await card.locator('.history-entry').count(),3);
     const first=await card.locator('.history-entry').nth(0).innerText();
     assert.match(first,/fre 6 nov\. 2026 07:00.*08:15/);
-    assert.match(first,/Gångtid: 1 h 15 min/);
+    assert.match(first,/Gångtid: 1 tim 15 min/);
     assert.match(first,/Energi: 1,25 kWh/);
     const second=await card.locator('.history-entry').nth(1).innerText();
     assert.match(second,/tors? 5 nov\. 2026 22:30.*fre 6 nov\. 00:00/);

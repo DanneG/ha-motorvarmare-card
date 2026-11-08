@@ -81,7 +81,7 @@ async function main() {
     // An optional post-departure period changes the actual stop, not the departure.
     await page.evaluate(()=>{const a=window.hass.states['sensor.status'].attributes;a.post_departure_minutes=30;document.querySelector('motorvarmare-card').hass={...window.hass};});
     assert.match(await card.locator('[data-mobile-departure="2026-11-20T09:00:00Z"]').innerText(),/Värmer 09:00–10:30[\s\S]*Avresa 10:00/);
-    assert.match(await card.locator('.summary-metrics').innerText(),/Värmetid\s*60 min/);
+    assert.match(await card.locator('.summary-metrics').innerText(),/Värmetid\s*1 tim/);
     assert.match(await card.locator('.summary-metrics').innerText(),/Efter avresa\s*30 min/);
     // Overlap must include the extra 30 minutes after the first departure.
     await page.evaluate(()=>{const c=document.querySelector('motorvarmare-card');c._windowEvents.push({departure:'2026-11-20T10:15:00Z',source:'Kalender'});c.hass={...window.hass};});
