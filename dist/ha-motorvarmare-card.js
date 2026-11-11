@@ -9,6 +9,7 @@ MV_I18N.en.suppressed = "Turned off for this departure";
 MV_I18N.sv.selectEntity = "Välj entitet"; MV_I18N.en.selectEntity = "Select entity";
 MV_I18N.sv.missing = "saknas"; MV_I18N.en.missing = "missing";
 MV_I18N.sv.from = "Källa:"; MV_I18N.en.from = "Source:";
+MV_I18N.sv.heaterControl = "Styr värmaren"; MV_I18N.en.heaterControl = "Heater control";
 MV_I18N.sv.eventSummary = "Avresa"; MV_I18N.en.eventSummary = "Departure";
 MV_I18N.sv.estimate = "Individuellt beräknade tider utifrån aktuell utetemperatur. Tiderna kan ändras när temperaturen ändras.";
 MV_I18N.en.estimate = "Individual estimates based on the current outdoor temperature. Times can change with temperature.";
@@ -850,22 +851,41 @@ class MotorvarmareCard extends HTMLElement {
         .calendar-modal .cal-agenda{font-size:13px;margin:0 0 4px}.calendar-modal .cal-agenda summary{min-height:44px;display:flex;align-items:center;font-weight:600}.calendar-modal .cal-agenda summary:after{content:"⌄";margin-left:auto;font-size:16px}.calendar-modal .cal-agenda[open] summary:after{content:"⌃"}
         .calendar-modal-hint{font-size:12px;line-height:1.4;color:var(--secondary-text-color);margin:10px 0 0}
         @media(max-width:480px){.calendar-modal{padding:12px}.calendar-modal .calendar-title{align-items:flex-start}.calendar-modal .cal-scroll{min-height:200px}}
+
+        /* Keep actions and the selected view in distinct, theme-aware groups. */
+        .control-panel{margin-top:16px;padding:15px 16px;border:1px solid var(--divider-color);border-radius:14px;background:var(--card-background-color)}
+        .control-panel .sectionhead{font-size:14px;line-height:1.3;margin:0}
+        .control-panel .quick-actions{margin-top:10px}
+        .control-panel .schedule-actions{margin-top:4px}
+        .control-panel .secondary-actions{margin-top:8px;padding-top:4px;border-top:1px solid var(--divider-color)}
+        .summary-source{margin-top:9px;font-size:12px;line-height:1.4;color:var(--secondary-text-color)}
+        .main-tabs{margin-top:20px;padding:5px;border:1px solid var(--divider-color);border-bottom:0;border-radius:14px 14px 0 0}
+        .main-panel:not([hidden]){min-width:0;padding:16px;border:1px solid var(--divider-color);border-radius:0 0 14px 14px;background:var(--card-background-color)}
+        .main-panel .calendar,.main-panel .calendar-placeholder,.main-panel .section,.main-panel .period-summary{margin-top:0}
+        .main-panel[data-main-panel="settings"] .section + .section,
+        .main-panel[data-main-panel="energy"] .energy-overview ~ .section,
+        .main-panel[data-main-panel="energy"] .period-summary{margin-top:16px;padding-top:16px;border-top:1px solid var(--divider-color)}
+        .main-panel .sectionhead{font-size:14px;line-height:1.35}
+        .main-panel .calendar-nav{flex-wrap:wrap}
+        @container (max-width:340px){.control-panel,.main-panel:not([hidden]){padding:12px}.calendar-range{min-width:125px}.head{flex-wrap:wrap}.headtext{flex:1 1 120px}}
+        @media(max-width:350px){.wrap{padding:15px}}
       </style>
       <ha-card><div class="wrap">
         <div class="head"><div class="icon"><ha-icon icon="mdi:car-defrost-front"></ha-icon></div><div class="headtext"><div class="title">${mvEscape(title)}</div><div class="status">${mvEscape(statusText)}</div></div><span class="badge ${sw?.state === "on" ? "on" : ""}">${t("heater")} ${heating}</span></div>
         <section class="departure-summary" aria-label="${t("departure")}">
           ${Number.isFinite(nextMs) ? `<div class="summary-label">${t("departure")}</div><div class="summary-date">${mvEscape(this._date(a.next_departure))}</div>${summaryTimeline}` : `<div class="summary-label">${t("departure")}</div><div class="summary-empty">${mvUsable(status) ? t("summaryEmpty") : t("noStatus")}</div>${mvUsable(status) ? `<button id="empty-add-departure" ${!calendarOk || this._pending ? "disabled" : ""}>＋ ${t("summaryAdd")}</button>` : ""}`}
           <div class="summary-metrics"><span><span>${t("summaryTemperature")}</span> <strong>${mvEscape(temperature)}</strong></span><span><span>${t("summaryDuration")}</span> <strong>${currentRuntime !== null ? mvDuration(h,currentRuntime) : mvUsable(status) && a.next_departure && Number.isFinite(a.duration_minutes) ? mvDuration(h,a.duration_minutes) : "–"}</strong></span>${mvUsable(status) && a.post_departure_minutes > 0 ? `<span><span>${t("postDeparture")}</span> <strong>${mvDuration(h,a.post_departure_minutes)}</strong></span>` : ""}</div>
+          ${mvUsable(status) && a.source ? `<div class="summary-source">${t("from")} ${mvEscape(String(mvStateText(h,a.source)).toLowerCase())}</div>` : ""}
         </section>
         ${a.alarm_active === true && showPower && a.energy_monitor_status === "low_power" && sw?.state === "on" ? `<div class="notice power-alarm" role="alert">${t("powerAlarm")}</div>` : ""}
         ${deviationMessage ? `<div class="notice power-deviation" role="alert">${mvEscape(deviationMessage)}</div>` : ""}
         ${meterWarnings.map(message => `<div class="hint meter-warning">${mvEscape(message)}</div>`).join("")}
-        ${mvUsable(status) && a.source ? `<div class="hint">${t("from")} ${mvEscape(String(mvStateText(h,a.source)).toLowerCase())}</div>` : ""}
         ${mvUsable(status) && a.error ? `<div class="notice" role="status">${mvEscape(mvErrorText(h,a.error))}</div>` : ""}
         ${mvUsable(status) && Array.isArray(a.operational_problems) ? a.operational_problems.filter(problem=>Object.prototype.hasOwnProperty.call(MV_I18N[mvLang(h)],problem)).map(problem=>`<div class="notice operational-problem" role="status">${mvEscape(t(problem))}</div>`).join("") : ""}
         ${this._actionError ? `<div class="notice" role="alert">${mvEscape(this._actionError)}</div>` : ""}
-        <div class="quick-actions">${mvUsable(status) && a.owned ? `<button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button><span class="hint">${a.active_until ? `${t("plannedStop")} ${mvEscape(this._date(a.active_until))}` : t("owned")}</span>` : `<button class="primary" id="start-now" ${!startOk || this._pending ? "disabled" : ""}>${t("runNow")}</button><span class="hint">${!mvUsable(status) ? t("noStatus") : sw?.state === "on" ? t("external") : sw?.state !== "off" ? t("unknownSwitch") : currentRuntime === null ? t("tempUnavailable") : currentRuntime <= 0 ? t("noRuntime") : `${t("runtimeFor")} ${mvDuration(h,currentRuntime)}; ${t("runtimeOff")}`}</span>`}</div>
+        <section class="control-panel" aria-label="${t("heaterControl")}"><div class="sectionhead">${t("heaterControl")}</div><div class="quick-actions">${mvUsable(status) && a.owned ? `<button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button><span class="hint">${a.active_until ? `${t("plannedStop")} ${mvEscape(this._date(a.active_until))}` : t("owned")}</span>` : `<button class="primary" id="start-now" ${!startOk || this._pending ? "disabled" : ""}>${t("runNow")}</button><span class="hint">${!mvUsable(status) ? t("noStatus") : sw?.state === "on" ? t("external") : sw?.state !== "off" ? t("unknownSwitch") : currentRuntime === null ? t("tempUnavailable") : currentRuntime <= 0 ? t("noRuntime") : `${t("runtimeFor")} ${mvDuration(h,currentRuntime)}; ${t("runtimeOff")}`}</span>`}</div>
         ${mvUsable(status) && (skipButton || pauseSwitch) ? `<div class="secondary-actions"><button id="more-actions" aria-expanded="${this._showMoreActions}">${this._showMoreActions ? t("lessActions") : t("moreActions")} <span aria-hidden="true">${this._showMoreActions ? "⌃" : "⌄"}</span></button>${a.automation_paused && pauseSwitch ? `<button id="pause-automation" class="resume-action" ${this._pending || pauseSwitch.state === "unavailable" ? "disabled" : ""}>${t("resume")}</button>` : ""}</div>${this._showMoreActions ? `<div class="quick-actions schedule-actions">${skipButton ? `<button id="skip-next" ${!a.next_departure || this._pending || skipButton.state === "unavailable" ? "disabled" : ""}>${t("skipNext")}</button>` : ""}${pauseSwitch && !a.automation_paused ? `<button id="pause-automation" ${this._pending || pauseSwitch.state === "unavailable" ? "disabled" : ""}>${t("pause")}</button>${pauseDate ? `<button id="show-pause-date">${t("pauseUntil")}</button>` : ""}` : ""}</div>${this._showPauseDate && pauseDate && !a.automation_paused ? `<div class="quick-actions pause-editor"><label for="pause-until">${t("pauseUntil")}</label><input id="pause-until" type="datetime-local" value="${mvEscape(this._pauseDraft ?? this._inputDate(pauseDate.state))}"><button id="save-pause">${t("savePause")}</button></div>` : ""}` : ""}${a.automation_paused && a.pause_until ? `<div class="hint">${t("pauseUntil")} ${mvEscape(this._date(a.pause_until))}</div>` : ""}` : ""}
+        </section>
         <div class="main-tabs" role="group" aria-label="${t("viewNavigation")}">${[["calendar","calendarTab"],["energy","energyTab"],["settings","settingsTab"]].map(([key,label])=>`<button data-main-tab="${key}" aria-pressed="${this._activeView===key}">${t(label)}</button>`).join("")}</div>
         <div class="main-panel" data-main-panel="calendar" ${this._activeView!=="calendar" ? "hidden" : ""}>${compactCalendar}</div>
         <div class="main-panel" data-main-panel="settings" ${this._activeView!=="settings" ? "hidden" : ""}>
