@@ -10,6 +10,12 @@ MV_I18N.sv.selectEntity = "Välj entitet"; MV_I18N.en.selectEntity = "Select ent
 MV_I18N.sv.missing = "saknas"; MV_I18N.en.missing = "missing";
 MV_I18N.sv.from = "Källa:"; MV_I18N.en.from = "Source:";
 MV_I18N.sv.heaterControl = "Styr värmaren"; MV_I18N.en.heaterControl = "Heater control";
+MV_I18N.sv.departurePassed = "Avresa passerad"; MV_I18N.en.departurePassed = "Departure passed";
+MV_I18N.sv.estimatedHeating = "Beräknad värmning"; MV_I18N.en.estimatedHeating = "Estimated heating";
+Object.assign(MV_I18N.sv,{calendarSource:"Källa",calendarHistory:"Registrerade värmningar",calendarHistoryNote:"Registrerade körningar visas separat från kalenderns beräknade tider. Energi och kostnad är uppskattningar.",calendarHistoryDay:"Visa värmningar för"});
+Object.assign(MV_I18N.en,{calendarSource:"Source",calendarHistory:"Recorded heating sessions",calendarHistoryNote:"Recorded sessions are shown separately from estimated calendar times. Energy and cost are estimates.",calendarHistoryDay:"Show heating sessions for"});
+MV_I18N.sv.calendarHistoryEmpty="Inga registrerade värmningar den här dagen."; MV_I18N.en.calendarHistoryEmpty="No recorded heating sessions on this day.";
+MV_I18N.sv.calendarHistoryCostMissing="Kostnad saknas"; MV_I18N.en.calendarHistoryCostMissing="Cost unavailable";
 MV_I18N.sv.eventSummary = "Avresa"; MV_I18N.en.eventSummary = "Departure";
 MV_I18N.sv.estimate = "Individuellt beräknade tider utifrån aktuell utetemperatur. Tiderna kan ändras när temperaturen ändras.";
 MV_I18N.en.estimate = "Individual estimates based on the current outdoor temperature. Times can change with temperature.";
@@ -220,6 +226,14 @@ class MotorvarmareCard extends HTMLElement {
     }, 0));
   }
   connectedCallback() {
+    // Update the calendar at a departure/stop boundary even if Home Assistant
+    // has no other state changes; avoid periodic re-renders in between.
+    if (!this._transitionTimer) this._transitionTimer=setInterval(()=>{
+      if (!(this._nextCalendarTransition <= Date.now())) return;
+      const focused=this.shadowRoot.activeElement;
+      if (focused && ["INPUT","SELECT"].includes(focused.tagName)) this._refreshAfterFocus=true;
+      else this._render();
+    },30000);
     const scroll=this.shadowRoot.querySelector(".cal-scroll");
     if (scroll?.clientHeight && this._initialCalendarScroll) {
       scroll.scrollTop=this._initialCalendarScroll.top; scroll.scrollLeft=this._initialCalendarScroll.left;
@@ -242,7 +256,7 @@ class MotorvarmareCard extends HTMLElement {
       this._resizeObserver.observe(this);
     }
   }
-  disconnectedCallback() { this._resizeObserver?.disconnect(); this._resizeObserver=null; }
+  disconnectedCallback() { this._resizeObserver?.disconnect(); this._resizeObserver=null; clearInterval(this._transitionTimer); this._transitionTimer=null; }
   static getConfigElement() { return document.createElement("motorvarmare-card-editor"); }
   static getStubConfig() { return {title:"Motorvärmare"}; }
   getCardSize() { return this._showWeek ? 8 : 4; }
@@ -471,6 +485,7 @@ class MotorvarmareCard extends HTMLElement {
   async _callWS(data) { return this._perform(() => this._hass.callWS(data)); }
   _render() {
     if (!this.shadowRoot) return;
+    this._nextCalendarTransition=Infinity;
     this._renderController?.abort();
     this._renderController = new AbortController();
     const renderSignal = this._renderController.signal;
@@ -541,6 +556,24 @@ class MotorvarmareCard extends HTMLElement {
       return {...item,end,duration_minutes:minutes,start:minutes>0 && a.temperature_blocked !== true ? new Date(new Date(item.departure).getTime()-minutes*60000).toISOString() : null};
     }).sort((x,y)=>new Date(x.departure)-new Date(y.departure)) : [];
     const stopTime = item => item.end && !Number.isNaN(new Date(item.end).getTime()) ? item.end : item.departure;
+    const formatCost=(amount,currency)=>Number.isFinite(amount) && typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? `${new Intl.NumberFormat(metricLocale,{minimumFractionDigits:2,maximumFractionDigits:2}).format(amount)} ${currency}` : null;
+    const historyAvailable=Array.isArray(a.heating_history);
+    const history=historyAvailable ? a.heating_history.filter(item=>item && typeof item==="object") : [];
+    const now = Date.now();
+    const departurePassed = item => new Date(item.departure).getTime() <= now;
+    const displaySource = item => `${departurePassed(item) ? `${t("departurePassed")} · ${t("calendarSource")}: ` : ""}${mvStateText(h,String(item.source || "Planerad"))}`;
+    // A stop after departure is only meaningful for an actual heating window.
+    // These are estimates, so they do not establish that the heater ran.
+    const effectiveEnd = item => {
+      const departure = new Date(item.departure).getTime();
+      const stop = new Date(stopTime(item)).getTime();
+      return !item.suppressed && item.start && stop > departure ? stop : departure;
+    };
+    const completed = item => effectiveEnd(item) <= now;
+    this._nextCalendarTransition=schedule.reduce((next,item)=>{
+      for (const boundary of [new Date(item.departure).getTime(),effectiveEnd(item)]) if (boundary > now && boundary < next) next=boundary;
+      return next;
+    },Infinity);
     const temperatureDetail = item => item.temperature_source === "forecast" ? ` · ${t("forecast")}${Number.isFinite(item.forecast_temperature) ? ` ${new Intl.NumberFormat(metricLocale,{maximumFractionDigits:1}).format(item.forecast_temperature)} °C` : ""}` : a.weather_enabled && item.temperature_source === "current" ? ` · ${t("currentTemperature")}` : "";
     const hasExtendedStop = item => new Date(stopTime(item)).getTime() > new Date(item.departure).getTime();
     // A repeated local hour can make consecutive instants look reversed even
@@ -549,7 +582,7 @@ class MotorvarmareCard extends HTMLElement {
     const heatTiming = (item,key) => {
       const end=stopTime(item);
       const ambiguous=wallClockReverses(item.start,item.departure) || wallClockReverses(item.departure,end) || wallClockReverses(item.start,end);
-      return `${t("heatingRange")} ${this._clock(item.start,key,ambiguous)}–${this._clock(end,key,ambiguous)} · ${t("timelineDeparture")} ${this._clock(item.departure,key,ambiguous)}`;
+      return `${t(departurePassed(item) ? "estimatedHeating" : "heatingRange")} ${this._clock(item.start,key,ambiguous)}–${this._clock(end,key,ambiguous)} · ${t("timelineDeparture")} ${this._clock(item.departure,key,ambiguous)}`;
     };
     // The summary reflects the controller's measured-temperature decision, not
     // a forecast for another calendar window. Only attach a stop when the
@@ -593,8 +626,8 @@ class MotorvarmareCard extends HTMLElement {
     }
     // Anchor to the first upcoming departure, then its earliest visible
     // segment. A later trip after midnight must not shift the view to 00:00.
-    const anchorItem = schedule.find(item => !item.suppressed && segments.some(s => s.item === item))
-      || schedule.find(item => segments.some(s => s.item === item));
+    const anchorItem = schedule.find(item => !completed(item) && !item.suppressed && segments.some(s => s.item === item))
+      || schedule.find(item => !completed(item) && segments.some(s => s.item === item));
     const anchorSegment = anchorItem && segments.find(s => s.item === anchorItem);
     if (!dayKeys.includes(this._mobileDay)) { this._mobileDay = null; this._mobileDayChosen = false; }
     if (!this._mobileDayChosen) this._mobileDay = anchorSegment?.key || dayKeys[0];
@@ -615,14 +648,14 @@ class MotorvarmareCard extends HTMLElement {
       for (const g of groups) { const count=Math.max(...g.map(x=>x.lane))+1; for (const item of g) item.lanes=count; }
       const entries = items.map(({item,top,height,heat,endOnly,lane,lanes}) => {
         const title = this._calendarExpanded && typeof item.summary === "string" && item.summary.trim() ? `${item.summary.trim()} · ` : "";
-        const source = `${title}${item.source ? mvStateText(h,String(item.source)) : mvStateText(h,"Planerad")}${temperatureDetail(item)}`;
+        const source = `${title}${displaySource(item)}${temperatureDetail(item)}`;
         const timing = item.suppressed ? `${t("suppressed")} · ${t("depShort")} ${this._clock(item.departure,key)}` : endOnly ? `${t(hasExtendedStop(item) ? "stopShort" : "depShort")} ${this._clock(stopTime(item),key)}` : heat ? heatTiming(item,key) : `${item.duration_minutes === 0 ? t("noHeat") : t("missingStart")} · ${t("depShort")} ${this._clock(item.departure,key)}`;
         const remove = key === this._dayKey(item.departure) && item.removable === true && item.uid && calendarOk ? `<button class="remove" data-remove-uid="${mvEscape(item.uid)}" ${item.recurrence_id ? `data-recurrence-id="${mvEscape(item.recurrence_id)}"` : ""} aria-label="${t("removeDeparture")} ${mvEscape(this._clock(item.departure,key))}" title="${t("removeDeparture")}">×</button>` : "";
         const end=stopTime(item), ambiguous=heat && (wallClockReverses(item.start,item.departure) || wallClockReverses(item.departure,end) || wallClockReverses(item.start,end));
         const gridTiming=this._calendarExpanded && heat && !endOnly && !item.suppressed ? `${this._clock(item.start,key,ambiguous)}–${this._clock(end,key,ambiguous)}` : timing;
         const eventText=`<div class="cal-timing">${mvEscape(gridTiming)}</div><div class="cal-source">${mvEscape(source)}</div>`;
         const content=this._calendarExpanded && item.removable === true && item.uid && calendarOk ? `<button type="button" class="cal-event-text" data-edit-index="${schedule.indexOf(item)}" aria-label="${mvEscape(`${t("edit")} ${this._date(item.departure)} · ${timing}`)}" title="${t("edit")}">${eventText}</button>` : `<div class="cal-event-text">${eventText}</div>`;
-        return `<div class="cal-event cal-entry ${heat ? "heating-event" : "marker-event"}" data-departure="${mvEscape(item.departure)}" data-segment-day="${key}" style="top:${top}px;height:${Math.min(height,gridHeight-top)}px;left:calc(${lane*100/lanes}% + 2px);width:calc(${100/lanes}% - 4px)" aria-label="${mvEscape(`${timing} · ${source}`)}" title="${mvEscape(`${timing} · ${source}`)}">${content}${remove}</div>`;
+        return `<div class="cal-event cal-entry ${heat ? "heating-event" : "marker-event"} ${completed(item) ? "is-past" : ""}" data-departure="${mvEscape(item.departure)}" data-segment-day="${key}" style="top:${top}px;height:${Math.min(height,gridHeight-top)}px;left:calc(${lane*100/lanes}% + 2px);width:calc(${100/lanes}% - 4px)" aria-label="${mvEscape(`${timing} · ${source}`)}" title="${mvEscape(`${timing} · ${source}`)}">${content}${remove}</div>`;
       }).join("");
       const dayDate=new Date(`${key}T12:00:00Z`), locale=mvLang(h)==="sv" ? "sv-SE" : "en-GB";
       const weekday=new Intl.DateTimeFormat(locale,{timeZone:"UTC",weekday:"short"}).format(dayDate);
@@ -639,10 +672,10 @@ class MotorvarmareCard extends HTMLElement {
     const agendaRows=schedule.filter(item=>dayKeys.includes(this._dayKey(item.departure))).map(item=>{
       const key=this._dayKey(item.departure), date=this._date(item.departure);
       const state=item.suppressed ? t("suppressed") : item.start ? heatTiming(item,key) : item.duration_minutes===0 ? t("noHeat") : t("missingStart");
-      const source=`${mvStateText(h,String(item.source || "Planerad"))}${temperatureDetail(item)}`;
+      const source=`${displaySource(item)}${temperatureDetail(item)}`;
       const remove=item.removable === true && item.uid && calendarOk ? `<button class="remove" data-remove-uid="${mvEscape(item.uid)}" ${item.recurrence_id ? `data-recurrence-id="${mvEscape(item.recurrence_id)}"` : ""} aria-label="${t("removeDeparture")} ${mvEscape(date)}">${t("remove")}</button>` : "";
       const edit=item.removable === true && item.uid && calendarOk ? `<button data-edit-index="${schedule.indexOf(item)}">${t("edit")}</button>` : "";
-      return `<li><span><strong>${mvEscape(date)}</strong><br>${mvEscape(state)} · ${mvEscape(source)}</span>${edit}${remove}</li>`;
+      return `<li class="${completed(item) ? "is-past" : ""}"><span><strong>${mvEscape(date)}</strong><br>${mvEscape(state)} · ${mvEscape(source)}</span>${edit}${remove}</li>`;
     }).join("");
     const mobileDays = dayKeys.map((key,i) => {
       const date=new Date(`${key}T12:00:00Z`), locale=mvLang(h)==="sv" ? "sv-SE" : "en-GB";
@@ -653,25 +686,21 @@ class MotorvarmareCard extends HTMLElement {
     const mobileEntries=segments.filter(s=>s.key===this._mobileDay).sort((a,b)=>a.from-b.from).map(({item,heat,endOnly})=>{
       const key=this._mobileDay;
       const timing=item.suppressed ? `${t("suppressed")} · ${t("depShort")} ${this._clock(item.departure,key)}` : endOnly ? `${t(hasExtendedStop(item) ? "stopShort" : "depShort")} ${this._clock(stopTime(item),key)}` : heat ? heatTiming(item,key) : `${item.duration_minutes === 0 ? t("noHeat") : t("missingStart")} · ${t("depShort")} ${this._clock(item.departure,key)}`;
-      const source=`${mvStateText(h,String(item.source || "Planerad"))}${temperatureDetail(item)}`;
+      const source=`${displaySource(item)}${temperatureDetail(item)}`;
       const end=stopTime(item), ambiguous=heat && (wallClockReverses(item.start,item.departure) || wallClockReverses(item.departure,end) || wallClockReverses(item.start,end));
-      const range=heat && !item.suppressed && !endOnly ? `${t("heatingRange")} ${this._clock(item.start,key,ambiguous)}–${this._clock(end,key,ambiguous)}` : timing;
+      const range=heat && !item.suppressed && !endOnly ? `${t(departurePassed(item) ? "estimatedHeating" : "heatingRange")} ${this._clock(item.start,key,ambiguous)}–${this._clock(end,key,ambiguous)}` : timing;
       const departureLine=heat && !item.suppressed && !endOnly ? `${t("timelineDeparture")} ${this._clock(item.departure,key,ambiguous)} · ${source}` : source;
       const remove=item.removable===true && item.uid && calendarOk ? `<button class="mobile-remove" data-remove-uid="${mvEscape(item.uid)}" ${item.recurrence_id ? `data-recurrence-id="${mvEscape(item.recurrence_id)}"` : ""} aria-label="${t("removeDeparture")} ${mvEscape(this._date(item.departure))}">${t("remove")}</button>` : "";
       const edit=item.removable===true && item.uid && calendarOk ? `<button data-edit-index="${schedule.indexOf(item)}">${t("edit")}</button>` : "";
-      return `<div class="mobile-event ${heat ? "heating-event" : "marker-event"}" data-mobile-departure="${mvEscape(item.departure)}"><div><strong>${mvEscape(range)}</strong><div class="mobile-source">${mvEscape(departureLine)}</div></div>${edit}${remove}</div>`;
+      return `<div class="mobile-event ${heat ? "heating-event" : "marker-event"} ${completed(item) ? "is-past" : ""}" data-mobile-departure="${mvEscape(item.departure)}"><div><strong>${mvEscape(range)}</strong><div class="mobile-source">${mvEscape(departureLine)}</div></div>${edit}${remove}</div>`;
     }).join("");
     const mobileCalendar=`<div class="mobile-calendar"><div class="mobile-days" role="group" aria-label="${t("selectDay")}">${mobileDays}</div><div class="mobile-selected"><strong>${mvEscape(this._dayLabel(this._mobileDay,dayKeys.indexOf(this._mobileDay)))}</strong><button class="mobile-add" data-add-day="${this._mobileDay}" ${!calendarOk || this._pending ? "disabled" : ""}>＋ ${t("add")}</button></div><div class="mobile-events">${mobileEntries || `<div class="mobile-empty">${t("noDeparture")}</div>`}</div></div>`;
     const agenda=`<details class="cal-agenda" ${agendaOpen ? "open" : ""}><summary>${t("agenda")}</summary>${agendaRows ? `<ul>${agendaRows}</ul>` : `<div class="cal-empty">${t("noDeparture")}</div>`}</details>`;
     const desktopCalendar=`<div class="desktop-calendar">${this._calendarExpanded ? agenda : ""}<div class="cal-scroll" role="region" tabindex="0" aria-label="${t("seven")}"><div class="cal-grid"><div class="cal-axis"><div class="cal-axis-head"></div><div class="cal-hours" style="height:${gridHeight}px">${rows}</div></div>${dayRows}</div></div><div class="cal-scroll-hint">${t("scrollHint")}</div>${!this._calendarExpanded ? agenda : ""}</div>`;
-    const calendarGrid=`${calendarEditor}${deleteEditor}${editEditor}${mobileCalendar}${desktopCalendar}`;
-    const formatCost=(amount,currency)=>Number.isFinite(amount) && typeof currency === "string" && /^[A-Z]{3}$/.test(currency) ? `${new Intl.NumberFormat(metricLocale,{minimumFractionDigits:2,maximumFractionDigits:2}).format(amount)} ${currency}` : null;
     const nextEnergy = mvUsable(status) && Number.isFinite(a.next_estimated_energy_kwh) && a.next_estimated_energy_kwh >= 0 && a.next_estimate_basis === "latest_complete_session_average" ? `${new Intl.NumberFormat(metricLocale,{minimumFractionDigits:2,maximumFractionDigits:3}).format(a.next_estimated_energy_kwh)} kWh` : null;
     const nextCost = nextEnergy ? formatCost(a.next_estimated_cost,a.next_estimated_currency) : null;
     const nextEstimate = nextEnergy ? `<div class="section next-estimate"><div class="sectionhead">${t("nextEnergyEstimate")}</div><div class="history-metrics"><strong>${mvEscape(nextEnergy)}</strong>${nextCost ? `<span>${t("cost")}: ${mvEscape(nextCost)}</span>` : ""}</div><div class="hint">${t(nextCost ? "nextEstimateNote" : "nextEstimateEnergyOnly")}</div></div>` : "";
-    const historyAvailable=Array.isArray(a.heating_history);
-    const history=historyAvailable ? a.heating_history.filter(item=>item && typeof item==="object") : [];
-    const historyRows=history.slice(0,this._historyLimit).map(item=>{
+    const historyItemContent=(item,forCalendar=false)=>{
       const valid=value=>typeof value==="string" && value.length>0 && !Number.isNaN(new Date(value).getTime());
       const hasStart=valid(item.start), hasEnd=valid(item.end), complete=item.complete === true && hasStart && hasEnd;
       const sameDay=hasStart && hasEnd && this._dayKey(item.start)===this._dayKey(item.end);
@@ -689,8 +718,16 @@ class MotorvarmareCard extends HTMLElement {
         : t("historyEnergyUnavailable");
       const cost=formatCost(item.estimated_cost,item.cost_currency);
       const startTemperature=Number.isFinite(item.temperature_at_start_c) ? `${t("startTemperature")}: ${new Intl.NumberFormat(metricLocale,{maximumFractionDigits:1}).format(item.temperature_at_start_c)} °C` : null;
-      return `<li class="history-entry"><div class="history-range">${mvEscape(range)}</div><div class="history-metrics">${duration ? `<span>${mvEscape(duration)}</span>` : ""}<span>${mvEscape(energy)}</span>${cost ? `<span>${t("cost")}: ${mvEscape(cost)}</span>` : ""}${startTemperature ? `<span>${mvEscape(startTemperature)}</span>` : ""}</div>${!complete ? `<div class="history-incomplete">${t("historyTimeIncomplete")}</div>` : ""}</li>`;
-    }).join("");
+      return `<div class="history-range">${mvEscape(range)}</div><div class="history-metrics">${duration ? `<span>${mvEscape(duration)}</span>` : ""}<span>${mvEscape(energy)}</span>${cost ? `<span>${t("cost")}: ${mvEscape(cost)}</span>` : forCalendar && a.cost_configured ? `<span>${t("calendarHistoryCostMissing")}</span>` : ""}${startTemperature ? `<span>${mvEscape(startTemperature)}</span>` : ""}</div>${!complete ? `<div class="history-incomplete">${t("historyTimeIncomplete")}</div>` : ""}`;
+    };
+    const historyRows=history.slice(0,this._historyLimit).map(item=>`<li class="history-entry">${historyItemContent(item)}</li>`).join("");
+    // Recorded switch sessions have no departure identity. Group by the local
+    // end date, as the energy totals do, and never attach one to a departure.
+    const calendarHistoryRows=history.filter(item=>typeof item.end === "string" && Number.isFinite(new Date(item.end).getTime()) && this._dayKey(item.end)===this._mobileDay)
+      .map(item=>`<li class="calendar-history-entry">${historyItemContent(item,true)}</li>`).join("");
+    const historyDayOptions=dayKeys.map((key,i)=>`<option value="${key}" ${key===this._mobileDay ? "selected" : ""}>${mvEscape(this._dayLabel(key,i))}</option>`).join("");
+    const calendarHistory=historyAvailable && history.length ? `<section class="calendar-history" aria-label="${t("calendarHistory")}"><div class="sectionhead">${t("calendarHistory")}</div><div class="calendar-history-day"><label for="calendar-history-day">${t("calendarHistoryDay")}</label><select id="calendar-history-day">${historyDayOptions}</select></div><div class="hint">${t("calendarHistoryNote")}</div>${calendarHistoryRows ? `<ul class="history-list">${calendarHistoryRows}</ul>` : `<div class="history-empty">${t("calendarHistoryEmpty")}</div>`}</section>` : "";
+    const calendarGrid=`${calendarEditor}${deleteEditor}${editEditor}${mobileCalendar}${desktopCalendar}${calendarHistory}`;
     const historyBody=!historyAvailable ? `<div class="history-empty">${t("historyUpdate")}</div>` : !history.length ? `<div class="history-empty">${t("historyEmpty")}</div>` : `<ul class="history-list">${historyRows}</ul>${history.length>this._historyLimit ? `<button id="history-more" class="history-more">${t("historyShowMore")}</button>` : ""}`;
     const totals=mvUsable(status) ? a.history_energy_totals : null;
     // Match the actual current local period, never the newest available older one.
@@ -867,6 +904,16 @@ class MotorvarmareCard extends HTMLElement {
         .main-panel[data-main-panel="energy"] .period-summary{margin-top:16px;padding-top:16px;border-top:1px solid var(--divider-color)}
         .main-panel .sectionhead{font-size:14px;line-height:1.35}
         .main-panel .calendar-nav{flex-wrap:wrap}
+        .cal-event.is-past,.mobile-event.is-past{background:var(--secondary-background-color);border-left-color:var(--secondary-text-color);color:var(--primary-text-color)}
+        .cal-agenda li.is-past strong{color:var(--secondary-text-color)}
+        .calendar-history{margin-top:16px;padding-top:14px;border-top:1px solid var(--divider-color)}
+        .calendar-history .hint{margin:6px 0 8px;line-height:1.4}
+        .calendar-history-entry{padding:11px 0;border-top:1px solid var(--divider-color);font-size:13px;line-height:1.45}
+        .calendar-history-day{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;font-size:12px;color:var(--secondary-text-color)}
+        .calendar-history-day select{max-width:100%;min-height:40px;padding:6px 8px;border:1px solid var(--divider-color);border-radius:8px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit}
+        @container (max-width:839px){.calendar-history-day{display:none}}
+        .calendar-modal .calendar-history-day{display:flex}
+        @container (max-width:420px){.mobile-event{flex-wrap:wrap}.mobile-event>div{flex:1 0 100%}.mobile-event [data-edit-index]{margin-left:auto}}
         @container (max-width:340px){.control-panel,.main-panel:not([hidden]){padding:12px}.calendar-range{min-width:125px}.head{flex-wrap:wrap}.headtext{flex:1 1 120px}}
         @media(max-width:350px){.wrap{padding:15px}}
       </style>
@@ -972,6 +1019,10 @@ class MotorvarmareCard extends HTMLElement {
       const key=el.dataset.mobileDay; this._mobileDay=key;this._mobileDayChosen=true;this._render();
       this.shadowRoot.querySelector(`[data-mobile-day="${key}"]`)?.focus({preventScroll:true});
     }, {signal:renderSignal}));
+    this.shadowRoot.querySelector("#calendar-history-day")?.addEventListener("change", event => {
+      this._mobileDay=event.target.value; this._mobileDayChosen=true; this._render();
+      this.shadowRoot.querySelector("#calendar-history-day")?.focus({preventScroll:true});
+    }, {signal:renderSignal});
     this.shadowRoot.querySelectorAll("[data-add-day]").forEach(el => el.addEventListener("click", () => this._selectCalendarDay(el.dataset.addDay), {signal:renderSignal}));
     this.shadowRoot.querySelectorAll("[data-grid-day]").forEach(el => el.addEventListener("click", event => {
       if (!calendarOk || this._pending || event.target.closest(".cal-event")) return;
