@@ -10,6 +10,12 @@ MV_I18N.sv.selectEntity = "Välj entitet"; MV_I18N.en.selectEntity = "Select ent
 MV_I18N.sv.missing = "saknas"; MV_I18N.en.missing = "missing";
 MV_I18N.sv.from = "Källa:"; MV_I18N.en.from = "Source:";
 MV_I18N.sv.heaterControl = "Styr värmaren"; MV_I18N.en.heaterControl = "Heater control";
+Object.assign(MV_I18N.sv,{activeHeating:"Pågående värmning",activeStart:"Start",activeNow:"Nu",activeStop:"Planerat stopp",activeRemaining:"kvar",activeFinished:"Stopptiden har passerat",activeProgressUnavailable:"Tid för pågående värmning saknas.",extend30:"Förläng 30 min",extendLimit:"Maximal värmetid har nåtts.",activeEnergy:"Energi hittills",activeCost:"Kostnad hittills",powerGraph:"Effekt över tid",powerGraphShow:"Visa effektgraf",powerGraphHide:"Dölj effektgraf",powerGraphEmpty:"Väntar på effektvärden.",powerGraphMissing:"Effektsensor saknas – välj en i integrationens inställningar.",powerGraphUnit:"Effekt i watt",powerGraphGap:"Avbrott i mätningen visas som luckor.",activeCostEstimate:"Uppskattad kostnad"});
+Object.assign(MV_I18N.en,{activeHeating:"Heating in progress",activeStart:"Start",activeNow:"Now",activeStop:"Planned stop",activeRemaining:"remaining",activeFinished:"The planned stop has passed",activeProgressUnavailable:"The current heating time is unavailable.",extend30:"Extend 30 min",extendLimit:"Maximum heating time reached.",activeEnergy:"Energy so far",activeCost:"Cost so far",powerGraph:"Power over time",powerGraphShow:"Show power graph",powerGraphHide:"Hide power graph",powerGraphEmpty:"Waiting for power readings.",powerGraphMissing:"No power sensor – select one in the integration settings.",powerGraphUnit:"Power in watts",powerGraphGap:"Gaps indicate missing measurements.",activeCostEstimate:"Estimated cost"});
+MV_I18N.sv.extendMax="Förläng till max"; MV_I18N.en.extendMax="Extend to maximum";
+MV_I18N.sv.maximumStop="Fyratimmarsgräns – senast"; MV_I18N.en.maximumStop="Four-hour limit – latest stop";
+MV_I18N.sv.measurementSince="Mätning sedan"; MV_I18N.en.measurementSince="Measurement since";
+MV_I18N.sv.measurementStartMissing="Mätningens starttid saknas"; MV_I18N.en.measurementStartMissing="Measurement start time unavailable";
 MV_I18N.sv.departurePassed = "Avresa passerad"; MV_I18N.en.departurePassed = "Departure passed";
 MV_I18N.sv.estimatedHeating = "Beräknad värmning"; MV_I18N.en.estimatedHeating = "Estimated heating";
 Object.assign(MV_I18N.sv,{calendarSource:"Källa",calendarHistory:"Registrerade värmningar",calendarHistoryNote:"Registrerade körningar visas separat från kalenderns beräknade tider. Energi och kostnad är uppskattningar.",calendarHistoryDay:"Visa värmningar för"});
@@ -214,7 +220,7 @@ class MotorvarmareCard extends HTMLElement {
     this._repeatFreq = "NONE"; this._repeatInterval = 1; this._repeatDays = []; this._repeatUntil = ""; this._deleteRecurrence = null; this._editChoice=null; this._editContext=null; this._editDate=""; this._editSummary=""; this._editAcknowledged=false;
     this._totalPeriod = "daily"; this._totalLimit = 7;
     this._pauseDraft = null; this._showPauseDate = false; this._showMoreActions = false;
-    this._activeView = "calendar";
+    this._activeView = "calendar"; this._showPowerGraph=true;
     this._calendarAnchored = false; this._calendarUserScrolled = false; this._desktopPosition = null;
     this._calendarExpanded = false; this._calendarPlaceholderHeight = 0;
     this._mobileDay = null; this._mobileDayChosen = false;
@@ -229,6 +235,7 @@ class MotorvarmareCard extends HTMLElement {
     // Update the calendar at a departure/stop boundary even if Home Assistant
     // has no other state changes; avoid periodic re-renders in between.
     if (!this._transitionTimer) this._transitionTimer=setInterval(()=>{
+      this._updateActiveProgress();
       if (!(this._nextCalendarTransition <= Date.now())) return;
       const focused=this.shadowRoot.activeElement;
       if (focused && ["INPUT","SELECT"].includes(focused.tagName)) this._refreshAfterFocus=true;
@@ -268,7 +275,7 @@ class MotorvarmareCard extends HTMLElement {
       this._calendarAnchored = false; this._calendarUserScrolled = false; this._desktopPosition = null;
       this._mobileDay = null; this._mobileDayChosen = false; this._showHistory = true; this._historyLimit = 10;
       this._pauseDraft = null; this._showPauseDate = false; this._showMoreActions = false;
-      this._activeView = "calendar";
+      this._activeView = "calendar"; this._showPowerGraph=true;
       this._calendarExpanded = false; this._calendarPlaceholderHeight = 0;
       this._windowOffset = 0; this._windowEvents = null; this._windowLoading = false; this._windowError = null; this._windowCalendarError = false; this._windowStart = null; this._windowOverride = false; this._todayBaseSignature = null; this._windowRequest++;
       this._forecastRequestSignature = null;
@@ -318,6 +325,7 @@ class MotorvarmareCard extends HTMLElement {
       calendar:auto.calendar,
       start_now:auto.start_now,
       stop_now:auto.stop_now,
+      extend_30:auto.extend_30,
       skip_next:auto.skip_next,
       automation_paused:auto.automation_paused,
       pause_until:auto.pause_until,
@@ -325,6 +333,25 @@ class MotorvarmareCard extends HTMLElement {
     };
   }
   _timeZone() { return this._hass?.config?.time_zone || undefined; }
+  _updateActiveProgress() {
+    const data=this._activeProgress;
+    if (!data || !this.shadowRoot) return;
+    const now=Date.now(), duration=data.end-data.start;
+    const ratio=Number.isFinite(duration) && duration>0 ? Math.max(0,Math.min(1,(now-data.start)/duration)) : null;
+    const fill=this.shadowRoot.querySelector(".active-progress-fill");
+    if (fill && ratio!==null) fill.style.width=`${(ratio*100).toFixed(2)}%`;
+    const marker=this.shadowRoot.querySelector(".active-progress-dot");
+    if (marker && ratio!==null) marker.style.left=`${(ratio*100).toFixed(2)}%`;
+    const nowLabel=this.shadowRoot.querySelector(".active-progress-now");
+    if (nowLabel && ratio!==null) nowLabel.style.left=`${Math.max(7,Math.min(93,ratio*100)).toFixed(2)}%`;
+    const progress=this.shadowRoot.querySelector(".active-progress");
+    if (progress && ratio!==null) progress.setAttribute("aria-valuenow",String(Math.round(ratio*100)));
+    const remaining=this.shadowRoot.querySelector(".active-remaining");
+    if (remaining && Number.isFinite(data.end)) {
+      const mins=Math.ceil((data.end-now)/60000);
+      remaining.textContent=mins>0 ? `${mvDuration(this._hass,mins)} ${mvText(this._hass,"activeRemaining")}` : mvText(this._hass,"activeFinished");
+    }
+  }
   _date(value, includeOffset=false, includeYear=false) {
     if (!value) return "–";
     const date = new Date(value);
@@ -471,6 +498,34 @@ class MotorvarmareCard extends HTMLElement {
     if (this._dayKey(value) !== day) { options.weekday = "short"; options.day = "numeric"; options.month = "short"; }
     return new Intl.DateTimeFormat(mvLang(this._hass) === "sv" ? "sv-SE" : "en-GB", options).format(date);
   }
+  _activeGraph(samples, start, now) {
+    // A null reading breaks the line: never invent a zero or bridge an outage.
+    const values=(Array.isArray(samples) ? samples : []).map(item=>({
+      at:typeof item?.at==="string" ? new Date(item.at).getTime() : NaN,
+      watts:Number.isFinite(item?.watts) && item.watts>=0 ? item.watts : null,
+    })).filter(item=>Number.isFinite(item.at) && item.at>=start && item.at<=now).sort((a,b)=>a.at-b.at);
+    const readings=values.filter(item=>item.watts!==null);
+    if (!readings.length) return `<div class="active-graph-empty">${mvEscape(mvText(this._hass,"powerGraphEmpty"))}</div>`;
+    const peak=Math.max(1,...readings.map(item=>item.watts));
+    const ceiling=Math.max(100,Math.ceil(peak/100)*100), span=Math.max(1,now-start);
+    let path="", drawing=false, previousY=null;
+    for (const item of values) {
+      if (item.watts===null) {drawing=false;continue;}
+      const x=Math.max(0,Math.min(320,(item.at-start)/span*320));
+      const y=76-Math.min(1,item.watts/ceiling)*68;
+      // Energy integration holds the last observation until the next one.
+      // Draw the same step function instead of implying a gradual change.
+      path+=drawing ? `L${x.toFixed(2)} ${previousY.toFixed(2)} L${x.toFixed(2)} ${y.toFixed(2)} ` : `M${x.toFixed(2)} ${y.toFixed(2)} `;
+      drawing=true; previousY=y;
+    }
+    const last=readings[readings.length-1];
+    const dots=values.filter((item,i)=>item.watts!==null && (item===last || ((i===0 || values[i-1].watts===null) && (i===values.length-1 || values[i+1].watts===null)))).map(item=>{
+      const x=Math.max(0,Math.min(320,(item.at-start)/span*320)), y=76-Math.min(1,item.watts/ceiling)*68;
+      return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3"></circle>`;
+    }).join("");
+    const max=new Intl.NumberFormat(mvLang(this._hass)==="sv"?"sv-SE":"en-GB",{maximumFractionDigits:0}).format(ceiling);
+    return `<div class="active-chart" role="img" aria-label="${mvEscape(mvText(this._hass,"powerGraphUnit"))}"><div class="active-chart-scale"><span>${mvEscape(max)} W</span><span>0 W</span></div><svg viewBox="0 0 320 84" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="8" x2="320" y2="8"></line><line x1="0" y1="42" x2="320" y2="42"></line><line x1="0" y1="76" x2="320" y2="76"></line><path d="${path.trim()}"></path>${dots}</svg></div>`;
+  }
   async _perform(action) {
     if (this._pending) return false;
     this._pending = true; this._actionError = null;
@@ -543,6 +598,30 @@ class MotorvarmareCard extends HTMLElement {
     const currentRuntime = mvUsable(status) && Number.isFinite(a.current_duration_minutes) ? a.current_duration_minutes : null;
     const startOk = startButton && startButton.state !== "unavailable" && sw?.state === "off" && currentRuntime > 0;
     const stopOk = mvUsable(status) && stopButton && stopButton.state !== "unavailable" && a.owned;
+    const active=mvUsable(status) && a.owned === true && sw?.state === "on";
+    const activeNowMs=Date.now(), startMsActive=typeof a.active_started_at==="string" ? new Date(a.active_started_at).getTime() : NaN;
+    const endMsActive=typeof a.active_until==="string" ? new Date(a.active_until).getTime() : NaN;
+    const limitMsActive=typeof a.active_max_until==="string" ? new Date(a.active_max_until).getTime() : NaN;
+    const activeTimeValid=Number.isFinite(startMsActive) && Number.isFinite(endMsActive) && endMsActive>startMsActive;
+    const activeRatio=activeTimeValid ? Math.max(0,Math.min(1,(activeNowMs-startMsActive)/(endMsActive-startMsActive))) : null;
+    this._activeProgress=active && Number.isFinite(endMsActive) ? {start:startMsActive,end:endMsActive} : null;
+    const remainingMinutes=Number.isFinite(endMsActive) ? Math.ceil((endMsActive-activeNowMs)/60000) : null;
+    const activeRemaining=remainingMinutes===null ? t("activeProgressUnavailable") : remainingMinutes>0 ? `${mvDuration(h,remainingMinutes)} ${t("activeRemaining")}` : t("activeFinished");
+    const currentDay=this._dayKey(new Date(activeNowMs).toISOString());
+    const activeTimeline=activeTimeValid ? `<div class="active-timeline"><div class="active-times"><div><span>${t("activeStart")}</span><strong>${mvEscape(this._clock(a.active_started_at,currentDay))}</strong></div><div><span>${t("activeStop")}</span><strong>${mvEscape(this._clock(a.active_until,currentDay))}</strong></div></div><div class="active-progress" role="progressbar" aria-label="${t("activeHeating")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(activeRatio*100)}"><div class="active-progress-fill" style="width:${(activeRatio*100).toFixed(2)}%"></div><span class="active-progress-dot" style="left:${(activeRatio*100).toFixed(2)}%" aria-hidden="true"></span></div><div class="active-progress-caption"><span class="active-progress-now" style="left:${Math.max(7,Math.min(93,activeRatio*100)).toFixed(2)}%">${t("activeNow")}</span></div></div>` : `<div class="hint active-no-time">${t("activeProgressUnavailable")}</div>`;
+    const extendButton=h.states[e.extend_30];
+    const canExtend=active && a.can_extend === true && extendButton && extendButton.state !== "unavailable" && !this._pending;
+    const remainingExtension=Number.isFinite(limitMsActive) && Number.isFinite(endMsActive) ? (limitMsActive-endMsActive)/60000 : null;
+    const extendText=remainingExtension!==null && remainingExtension<30 ? t("extendMax") : t("extend30");
+    const extend=`<button id="extend-30" class="active-extend" ${!canExtend ? "disabled" : ""}>${mvEscape(extendText)}</button>`;
+    const measurementStart=typeof a.active_measurement_started_at === "string" ? new Date(a.active_measurement_started_at).getTime() : NaN;
+    const measuredSince=Number.isFinite(measurementStart);
+    const activeCost=measuredSince && Number.isFinite(a.active_session_cost) && typeof a.active_session_currency==="string" && /^[A-Z]{3}$/.test(a.active_session_currency) ? `${new Intl.NumberFormat(metricLocale,{minimumFractionDigits:2,maximumFractionDigits:2}).format(a.active_session_cost)} ${a.active_session_currency}` : null;
+    const activeMetrics=showPower || showEnergy || activeCost ? `<div class="active-metrics">${showPower ? `<div><span>${t("currentPower")}</span><strong>${mvEscape(measuredPower)}</strong></div>` : ""}${showEnergy ? `<div><span>${t("activeEnergy")}</span><strong>${measuredSince ? mvEscape(sessionEnergy) : "–"}</strong></div>` : ""}${activeCost ? `<div><span>${t("activeCostEstimate")}</span><strong>${mvEscape(activeCost)}</strong></div>` : ""}</div>${showEnergy ? `<div class="hint active-measurement-since">${measuredSince ? `${t("measurementSince")} ${mvEscape(this._clock(a.active_measurement_started_at,currentDay))}` : t("measurementStartMissing")}</div>` : ""}` : "";
+    const chartStart=Number.isFinite(startMsActive) ? startMsActive : NaN;
+    const chart=Number.isFinite(chartStart) && chartStart<=activeNowMs ? this._activeGraph(a.active_power_samples,chartStart,activeNowMs) : `<div class="active-graph-empty">${t("powerGraphEmpty")}</div>`;
+    const graph=showPower ? `<div class="active-graph-section"><button id="active-graph-toggle" class="active-graph-toggle" aria-expanded="${this._showPowerGraph}"><span>${t("powerGraph")}</span><span>${this._showPowerGraph ? t("hide") : t("show")} ${this._showPowerGraph ? "⌃" : "⌄"}</span></button>${this._showPowerGraph ? `${chart}<div class="active-chart-time"><span>${activeTimeValid ? mvEscape(this._clock(a.active_started_at,currentDay)) : "–"}</span><span>${t("activeNow")}</span></div><div class="hint active-graph-hint">${t("powerGraphGap")}</div>` : ""}</div>` : `<div class="hint active-no-sensor">${t("powerGraphMissing")}</div>`;
+    const activeControl=active ? `<div class="active-header"><div class="sectionhead">${t("activeHeating")}</div><span class="active-live"><i></i>${t("on")}</span></div><div class="active-remaining">${mvEscape(activeRemaining)}</div>${activeTimeline}${activeMetrics}<div class="quick-actions active-actions"><button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button>${e.extend_30 ? extend : ""}${!activeTimeValid && Number.isFinite(endMsActive) ? `<span class="hint">${t("plannedStop")} ${mvEscape(this._date(a.active_until))}</span>` : ""}</div>${e.extend_30 && a.can_extend === false && remainingExtension!==null && remainingExtension<=0 ? `<div class="hint active-limit">${t("extendLimit")}</div>` : e.extend_30 && a.can_extend === true && remainingExtension!==null && remainingExtension<30 ? `<div class="hint active-limit">${t("maximumStop")} ${mvEscape(this._clock(a.active_max_until,currentDay))}.</div>` : ""}${graph}` : "";
     const calendar = h.states[e.calendar];
     const calendarOk = mvUsable(status) && calendar && calendar.state !== "unavailable";
     const windowData=mvUsable(status) ? ((this._windowOffset || this._windowOverride) ? this._windowEvents : a.schedule_7_days) : null;
@@ -904,6 +983,31 @@ class MotorvarmareCard extends HTMLElement {
         .main-panel[data-main-panel="energy"] .period-summary{margin-top:16px;padding-top:16px;border-top:1px solid var(--divider-color)}
         .main-panel .sectionhead{font-size:14px;line-height:1.35}
         .main-panel .calendar-nav{flex-wrap:wrap}
+        .active-header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+        .active-live{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:color-mix(in srgb,var(--primary-color) 14%,transparent);color:var(--primary-color);font-size:11px;font-weight:700}
+        .active-live i{width:7px;height:7px;border-radius:50%;background:currentColor}
+        .active-remaining{font-size:22px;line-height:1.2;font-weight:700;margin:10px 0 14px}
+        .active-timeline{padding:12px 13px 10px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color)}
+        .active-times{display:flex;justify-content:space-between;gap:12px}.active-times>div{display:grid;gap:3px}.active-times>div:last-child{text-align:right}
+        .active-times span,.active-progress-caption{font-size:11px;line-height:1.3;color:var(--secondary-text-color)}
+        .active-times strong{font-size:14px;color:var(--primary-text-color)}
+        .active-progress{position:relative;height:7px;margin:16px 5px 8px;border-radius:20px;background:var(--divider-color)}
+        .active-progress-fill{height:100%;border-radius:inherit;background:var(--primary-color)}
+        .active-progress-dot{position:absolute;top:50%;width:13px;height:13px;transform:translate(-50%,-50%);border-radius:50%;background:var(--primary-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary-color) 20%,transparent)}
+        .active-progress-caption{position:relative;height:14px}.active-progress-now{position:absolute;transform:translateX(-50%);white-space:nowrap}
+        .active-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin-top:12px}
+        .active-metrics>div{display:grid;gap:4px;padding:11px 12px;border-radius:10px;background:var(--secondary-background-color);min-width:0}
+        .active-metrics span{font-size:11px;line-height:1.3;color:var(--secondary-text-color)}.active-metrics strong{font-size:16px;overflow-wrap:anywhere}
+        .active-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.active-actions button{min-height:44px}.active-actions .active-extend{background:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:650}
+        .active-limit,.active-no-sensor,.active-no-time,.active-measurement-since{margin-top:9px;line-height:1.4}
+        .active-graph-section{margin-top:14px;padding-top:7px;border-top:1px solid var(--divider-color)}
+        .active-graph-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;min-height:44px;padding:4px 0;font-weight:650;color:var(--primary-text-color)}
+        .active-graph-toggle span:last-child{font-size:12px;color:var(--primary-color);font-weight:500;white-space:nowrap}
+        .active-chart{display:flex;gap:8px;align-items:stretch;height:100px;padding:5px 0 0}
+        .active-chart-scale{min-width:42px;display:flex;flex-direction:column;justify-content:space-between;padding:0 0 3px;font-size:10px;color:var(--secondary-text-color);white-space:nowrap}
+        .active-chart svg{display:block;flex:1;min-width:0;width:100%;height:100%;overflow:visible}.active-chart line{stroke:var(--divider-color);stroke-width:1;vector-effect:non-scaling-stroke}.active-chart path{stroke:var(--primary-color);stroke-width:2.5;fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}.active-chart circle{fill:var(--primary-color);vector-effect:non-scaling-stroke}
+        .active-chart-time{display:flex;justify-content:space-between;margin:4px 0 0 50px;font-size:11px;color:var(--secondary-text-color)}
+        .active-graph-hint{font-size:11px;margin-top:8px;line-height:1.35}.active-graph-empty{padding:15px 0 4px;color:var(--secondary-text-color);font-size:12px}
         .cal-event.is-past,.mobile-event.is-past{background:var(--secondary-background-color);border-left-color:var(--secondary-text-color);color:var(--primary-text-color)}
         .cal-agenda li.is-past strong{color:var(--secondary-text-color)}
         .calendar-history{margin-top:16px;padding-top:14px;border-top:1px solid var(--divider-color)}
@@ -930,7 +1034,7 @@ class MotorvarmareCard extends HTMLElement {
         ${mvUsable(status) && a.error ? `<div class="notice" role="status">${mvEscape(mvErrorText(h,a.error))}</div>` : ""}
         ${mvUsable(status) && Array.isArray(a.operational_problems) ? a.operational_problems.filter(problem=>Object.prototype.hasOwnProperty.call(MV_I18N[mvLang(h)],problem)).map(problem=>`<div class="notice operational-problem" role="status">${mvEscape(t(problem))}</div>`).join("") : ""}
         ${this._actionError ? `<div class="notice" role="alert">${mvEscape(this._actionError)}</div>` : ""}
-        <section class="control-panel" aria-label="${t("heaterControl")}"><div class="sectionhead">${t("heaterControl")}</div><div class="quick-actions">${mvUsable(status) && a.owned ? `<button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button><span class="hint">${a.active_until ? `${t("plannedStop")} ${mvEscape(this._date(a.active_until))}` : t("owned")}</span>` : `<button class="primary" id="start-now" ${!startOk || this._pending ? "disabled" : ""}>${t("runNow")}</button><span class="hint">${!mvUsable(status) ? t("noStatus") : sw?.state === "on" ? t("external") : sw?.state !== "off" ? t("unknownSwitch") : currentRuntime === null ? t("tempUnavailable") : currentRuntime <= 0 ? t("noRuntime") : `${t("runtimeFor")} ${mvDuration(h,currentRuntime)}; ${t("runtimeOff")}`}</span>`}</div>
+        <section class="control-panel" aria-label="${t("heaterControl")}">${active ? activeControl : `<div class="sectionhead">${t("heaterControl")}</div><div class="quick-actions">${mvUsable(status) && a.owned ? `<button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button><span class="hint">${a.active_until ? `${t("plannedStop")} ${mvEscape(this._date(a.active_until))}` : t("owned")}</span>` : `<button class="primary" id="start-now" ${!startOk || this._pending ? "disabled" : ""}>${t("runNow")}</button><span class="hint">${!mvUsable(status) ? t("noStatus") : sw?.state === "on" ? t("external") : sw?.state !== "off" ? t("unknownSwitch") : currentRuntime === null ? t("tempUnavailable") : currentRuntime <= 0 ? t("noRuntime") : `${t("runtimeFor")} ${mvDuration(h,currentRuntime)}; ${t("runtimeOff")}`}</span>`}</div>`}
         ${mvUsable(status) && (skipButton || pauseSwitch) ? `<div class="secondary-actions"><button id="more-actions" aria-expanded="${this._showMoreActions}">${this._showMoreActions ? t("lessActions") : t("moreActions")} <span aria-hidden="true">${this._showMoreActions ? "⌃" : "⌄"}</span></button>${a.automation_paused && pauseSwitch ? `<button id="pause-automation" class="resume-action" ${this._pending || pauseSwitch.state === "unavailable" ? "disabled" : ""}>${t("resume")}</button>` : ""}</div>${this._showMoreActions ? `<div class="quick-actions schedule-actions">${skipButton ? `<button id="skip-next" ${!a.next_departure || this._pending || skipButton.state === "unavailable" ? "disabled" : ""}>${t("skipNext")}</button>` : ""}${pauseSwitch && !a.automation_paused ? `<button id="pause-automation" ${this._pending || pauseSwitch.state === "unavailable" ? "disabled" : ""}>${t("pause")}</button>${pauseDate ? `<button id="show-pause-date">${t("pauseUntil")}</button>` : ""}` : ""}</div>${this._showPauseDate && pauseDate && !a.automation_paused ? `<div class="quick-actions pause-editor"><label for="pause-until">${t("pauseUntil")}</label><input id="pause-until" type="datetime-local" value="${mvEscape(this._pauseDraft ?? this._inputDate(pauseDate.state))}"><button id="save-pause">${t("savePause")}</button></div>` : ""}` : ""}${a.automation_paused && a.pause_until ? `<div class="hint">${t("pauseUntil")} ${mvEscape(this._date(a.pause_until))}</div>` : ""}` : ""}
         </section>
         <div class="main-tabs" role="group" aria-label="${t("viewNavigation")}">${[["calendar","calendarTab"],["energy","energyTab"],["settings","settingsTab"]].map(([key,label])=>`<button data-main-tab="${key}" aria-pressed="${this._activeView===key}">${t(label)}</button>`).join("")}</div>
@@ -993,6 +1097,8 @@ class MotorvarmareCard extends HTMLElement {
     this.shadowRoot.querySelector("#clear")?.addEventListener("click", async () => {if (await this._call("button", "press", {entity_id:e.clear_entity})) {this._draft = null; this._render();}}, {signal:renderSignal});
     this.shadowRoot.querySelector("#start-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.start_now}), {signal:renderSignal});
     this.shadowRoot.querySelector("#stop-now")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.stop_now}), {signal:renderSignal});
+    this.shadowRoot.querySelector("#extend-30")?.addEventListener("click", () => this._call("button", "press", {entity_id:e.extend_30}), {signal:renderSignal});
+    this.shadowRoot.querySelector("#active-graph-toggle")?.addEventListener("click", () => {this._showPowerGraph=!this._showPowerGraph;this._render();this.shadowRoot.querySelector("#active-graph-toggle")?.focus({preventScroll:true});}, {signal:renderSignal});
     this.shadowRoot.querySelectorAll("[data-main-tab]").forEach(el=>el.addEventListener("click",()=>{this._activeView=el.dataset.mainTab;this._render();}, {signal:renderSignal}));
     this.shadowRoot.querySelector("#new-departure")?.addEventListener("click",()=>this._selectCalendarDay(this._dayKeys()[0]), {signal:renderSignal});
     this.shadowRoot.querySelector("#empty-add-departure")?.addEventListener("click",()=>{this._activeView="calendar";this._selectCalendarDay(this._dayKeys()[0]);}, {signal:renderSignal});
