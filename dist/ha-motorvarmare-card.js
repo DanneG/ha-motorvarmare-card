@@ -333,15 +333,44 @@ class MotorvarmareCard extends HTMLElement {
     };
   }
   _timeZone() { return this._hass?.config?.time_zone || undefined; }
+  _activeOffsetChanged(start,end) {
+    try {
+      const format=new Intl.DateTimeFormat("en-GB",{timeZone:this._timeZone(),timeZoneName:"shortOffset"});
+      const offset=instant=>format.formatToParts(new Date(instant)).find(part=>part.type==="timeZoneName")?.value;
+      return offset(start)!==offset(end);
+    } catch (_) { return false; }
+  }
+  _activeTick(start,end,part,ambiguous) {
+    const value=new Date(start+(end-start)*part).toISOString();
+    return this._clock(value,this._dayKey(value),ambiguous);
+  }
   _updateActiveProgress() {
     const data=this._activeProgress;
     if (!data || !this.shadowRoot) return;
-    const now=Date.now(), duration=data.end-data.start;
+    const now=Date.now(), axisEnd=Math.max(data.end,now), duration=axisEnd-data.start;
     const ratio=Number.isFinite(duration) && duration>0 ? Math.max(0,Math.min(1,(now-data.start)/duration)) : null;
     const fill=this.shadowRoot.querySelector(".active-progress-fill");
     if (fill && ratio!==null) fill.style.width=`${(ratio*100).toFixed(2)}%`;
     const marker=this.shadowRoot.querySelector(".active-progress-dot");
     if (marker && ratio!==null) marker.style.left=`${(ratio*100).toFixed(2)}%`;
+    const graphMarker=this.shadowRoot.querySelector(".active-chart-now");
+    if (graphMarker && ratio!==null) graphMarker.style.left=`${(ratio*100).toFixed(2)}%`;
+    const overdue=now>data.end;
+    const stopRatio=Number.isFinite(duration) && duration>0 ? Math.max(0,Math.min(1,(data.end-data.start)/duration)) : null;
+    this.shadowRoot.querySelectorAll(".active-stop-marker").forEach(marker=>{
+      marker.hidden=!overdue;
+      if (stopRatio!==null) marker.style.left=`${(stopRatio*100).toFixed(2)}%`;
+    });
+    const stopLegend=this.shadowRoot.querySelector(".active-stop-explanation");
+    if (stopLegend) stopLegend.hidden=!overdue;
+    if (overdue && Number.isFinite(data.start) && duration>0) {
+      // Update just this chart and its labels; never rebuild the page or disturb focus.
+      const ambiguous=this._activeOffsetChanged(data.start,axisEnd);
+      this.shadowRoot.querySelector(".active-axis")?.classList.toggle("active-ambiguous",ambiguous);
+      this.shadowRoot.querySelectorAll(".active-tick").forEach((tick,i)=>{tick.textContent=this._activeTick(data.start,axisEnd,[0,.5,1][i],ambiguous);});
+      const chart=this.shadowRoot.querySelector(".active-chart");
+      if (chart) chart.outerHTML=this._activeGraph(data.samples,data.start,axisEnd,now,data.end);
+    }
     const nowLabel=this.shadowRoot.querySelector(".active-progress-now");
     if (nowLabel && ratio!==null) nowLabel.style.left=`${Math.max(7,Math.min(93,ratio*100)).toFixed(2)}%`;
     const progress=this.shadowRoot.querySelector(".active-progress");
@@ -498,16 +527,16 @@ class MotorvarmareCard extends HTMLElement {
     if (this._dayKey(value) !== day) { options.weekday = "short"; options.day = "numeric"; options.month = "short"; }
     return new Intl.DateTimeFormat(mvLang(this._hass) === "sv" ? "sv-SE" : "en-GB", options).format(date);
   }
-  _activeGraph(samples, start, now) {
+  _activeGraph(samples, start, end, now, plannedEnd=end) {
     // A null reading breaks the line: never invent a zero or bridge an outage.
     const values=(Array.isArray(samples) ? samples : []).map(item=>({
       at:typeof item?.at==="string" ? new Date(item.at).getTime() : NaN,
       watts:Number.isFinite(item?.watts) && item.watts>=0 ? item.watts : null,
-    })).filter(item=>Number.isFinite(item.at) && item.at>=start && item.at<=now).sort((a,b)=>a.at-b.at);
+    })).filter(item=>Number.isFinite(item.at) && item.at>=start && item.at<=now && item.at<=end).sort((a,b)=>a.at-b.at);
     const readings=values.filter(item=>item.watts!==null);
     if (!readings.length) return `<div class="active-graph-empty">${mvEscape(mvText(this._hass,"powerGraphEmpty"))}</div>`;
     const peak=Math.max(1,...readings.map(item=>item.watts));
-    const ceiling=Math.max(100,Math.ceil(peak/100)*100), span=Math.max(1,now-start);
+    const ceiling=Math.max(100,Math.ceil(peak/100)*100), span=Math.max(1,end-start);
     let path="", drawing=false, previousY=null;
     for (const item of values) {
       if (item.watts===null) {drawing=false;continue;}
@@ -524,7 +553,9 @@ class MotorvarmareCard extends HTMLElement {
       return `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3"></circle>`;
     }).join("");
     const max=new Intl.NumberFormat(mvLang(this._hass)==="sv"?"sv-SE":"en-GB",{maximumFractionDigits:0}).format(ceiling);
-    return `<div class="active-chart" role="img" aria-label="${mvEscape(mvText(this._hass,"powerGraphUnit"))}"><div class="active-chart-scale"><span>${mvEscape(max)} W</span><span>0 W</span></div><svg viewBox="0 0 320 84" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="8" x2="320" y2="8"></line><line x1="0" y1="42" x2="320" y2="42"></line><line x1="0" y1="76" x2="320" y2="76"></line><path d="${path.trim()}"></path>${dots}</svg></div>`;
+    const nowPosition=Math.max(0,Math.min(100,(now-start)/span*100));
+    const stopPosition=Math.max(0,Math.min(100,(plannedEnd-start)/span*100));
+    return `<div class="active-chart" role="img" aria-label="${mvEscape(mvText(this._hass,"powerGraphUnit"))}"><div class="active-chart-scale"><span>${mvEscape(max)} W</span><span>0 W</span></div><div class="active-chart-plot"><svg viewBox="0 0 320 84" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="8" x2="320" y2="8"></line><line x1="0" y1="42" x2="320" y2="42"></line><line x1="0" y1="76" x2="320" y2="76"></line><path d="${path.trim()}"></path>${dots}</svg><span class="active-chart-now" style="left:${nowPosition.toFixed(2)}%" aria-hidden="true"></span><span class="active-stop-marker" style="left:${stopPosition.toFixed(2)}%" ${now<=plannedEnd ? "hidden" : ""} aria-hidden="true"></span></div></div>`;
   }
   async _perform(action) {
     if (this._pending) return false;
@@ -603,12 +634,17 @@ class MotorvarmareCard extends HTMLElement {
     const endMsActive=typeof a.active_until==="string" ? new Date(a.active_until).getTime() : NaN;
     const limitMsActive=typeof a.active_max_until==="string" ? new Date(a.active_max_until).getTime() : NaN;
     const activeTimeValid=Number.isFinite(startMsActive) && Number.isFinite(endMsActive) && endMsActive>startMsActive;
-    const activeRatio=activeTimeValid ? Math.max(0,Math.min(1,(activeNowMs-startMsActive)/(endMsActive-startMsActive))) : null;
-    this._activeProgress=active && Number.isFinite(endMsActive) ? {start:startMsActive,end:endMsActive} : null;
+    const axisEndActive=activeTimeValid ? Math.max(endMsActive,activeNowMs) : NaN;
+    const activeRatio=activeTimeValid ? Math.max(0,Math.min(1,(activeNowMs-startMsActive)/(axisEndActive-startMsActive))) : null;
+    const stopRatio=activeTimeValid ? Math.max(0,Math.min(1,(endMsActive-startMsActive)/(axisEndActive-startMsActive))) : null;
+    this._activeProgress=active && Number.isFinite(endMsActive) ? {start:startMsActive,end:endMsActive,samples:a.active_power_samples} : null;
     const remainingMinutes=Number.isFinite(endMsActive) ? Math.ceil((endMsActive-activeNowMs)/60000) : null;
     const activeRemaining=remainingMinutes===null ? t("activeProgressUnavailable") : remainingMinutes>0 ? `${mvDuration(h,remainingMinutes)} ${t("activeRemaining")}` : t("activeFinished");
     const currentDay=this._dayKey(new Date(activeNowMs).toISOString());
-    const activeTimeline=activeTimeValid ? `<div class="active-timeline"><div class="active-times"><div><span>${t("activeStart")}</span><strong>${mvEscape(this._clock(a.active_started_at,currentDay))}</strong></div><div><span>${t("activeStop")}</span><strong>${mvEscape(this._clock(a.active_until,currentDay))}</strong></div></div><div class="active-progress" role="progressbar" aria-label="${t("activeHeating")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(activeRatio*100)}"><div class="active-progress-fill" style="width:${(activeRatio*100).toFixed(2)}%"></div><span class="active-progress-dot" style="left:${(activeRatio*100).toFixed(2)}%" aria-hidden="true"></span></div><div class="active-progress-caption"><span class="active-progress-now" style="left:${Math.max(7,Math.min(93,activeRatio*100)).toFixed(2)}%">${t("activeNow")}</span></div></div>` : `<div class="hint active-no-time">${t("activeProgressUnavailable")}</div>`;
+    const activeAmbiguous=activeTimeValid && this._activeOffsetChanged(startMsActive,axisEndActive);
+    const activeClock=value=>this._clock(value,currentDay,activeAmbiguous);
+    const ticks=activeTimeValid ? [0,.5,1].map((part,i)=>`<span class="active-tick tick-${i}">${mvEscape(this._activeTick(startMsActive,axisEndActive,part,activeAmbiguous))}</span>`).join("") : "";
+    const activeTimeline=activeTimeValid ? `<div class="active-timeline" style="--active-axis-gutter:${showPower ? 50 : 0}px"><div class="active-times"><div><span>${t("activeStart")}</span><strong>${mvEscape(activeClock(a.active_started_at))}</strong></div><div><span>${t("activeStop")}</span><strong>${mvEscape(activeClock(a.active_until))}</strong></div></div><div class="active-plot"><div class="active-axis ${activeAmbiguous ? "active-ambiguous" : ""}">${ticks}</div><div class="active-progress" role="progressbar" aria-label="${t("activeHeating")}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(activeRatio*100)}"><div class="active-progress-fill" style="width:${(activeRatio*100).toFixed(2)}%"></div><span class="active-bar-label">${t("heater")}</span><span class="active-progress-dot" style="left:${(activeRatio*100).toFixed(2)}%" aria-hidden="true"></span><span class="active-stop-marker" style="left:${(stopRatio*100).toFixed(2)}%" ${activeNowMs<=endMsActive ? "hidden" : ""} title="${t("activeStop")}" aria-label="${t("activeStop")}"></span></div><div class="active-progress-caption"><span class="active-progress-now" style="left:${Math.max(7,Math.min(93,activeRatio*100)).toFixed(2)}%">${t("activeNow")}</span></div><div class="active-stop-explanation" ${activeNowMs<=endMsActive ? "hidden" : ""}>${t("activeStop")}</div></div></div>` : `<div class="hint active-no-time">${t("activeProgressUnavailable")}</div>`;
     const extendButton=h.states[e.extend_30];
     const canExtend=active && a.can_extend === true && extendButton && extendButton.state !== "unavailable" && !this._pending;
     const remainingExtension=Number.isFinite(limitMsActive) && Number.isFinite(endMsActive) ? (limitMsActive-endMsActive)/60000 : null;
@@ -619,9 +655,9 @@ class MotorvarmareCard extends HTMLElement {
     const activeCost=measuredSince && Number.isFinite(a.active_session_cost) && typeof a.active_session_currency==="string" && /^[A-Z]{3}$/.test(a.active_session_currency) ? `${new Intl.NumberFormat(metricLocale,{minimumFractionDigits:2,maximumFractionDigits:2}).format(a.active_session_cost)} ${a.active_session_currency}` : null;
     const activeMetrics=showPower || showEnergy || activeCost ? `<div class="active-metrics">${showPower ? `<div><span>${t("currentPower")}</span><strong>${mvEscape(measuredPower)}</strong></div>` : ""}${showEnergy ? `<div><span>${t("activeEnergy")}</span><strong>${measuredSince ? mvEscape(sessionEnergy) : "–"}</strong></div>` : ""}${activeCost ? `<div><span>${t("activeCostEstimate")}</span><strong>${mvEscape(activeCost)}</strong></div>` : ""}</div>${showEnergy ? `<div class="hint active-measurement-since">${measuredSince ? `${t("measurementSince")} ${mvEscape(this._clock(a.active_measurement_started_at,currentDay))}` : t("measurementStartMissing")}</div>` : ""}` : "";
     const chartStart=Number.isFinite(startMsActive) ? startMsActive : NaN;
-    const chart=Number.isFinite(chartStart) && chartStart<=activeNowMs ? this._activeGraph(a.active_power_samples,chartStart,activeNowMs) : `<div class="active-graph-empty">${t("powerGraphEmpty")}</div>`;
-    const graph=showPower ? `<div class="active-graph-section"><button id="active-graph-toggle" class="active-graph-toggle" aria-expanded="${this._showPowerGraph}"><span>${t("powerGraph")}</span><span>${this._showPowerGraph ? t("hide") : t("show")} ${this._showPowerGraph ? "⌃" : "⌄"}</span></button>${this._showPowerGraph ? `${chart}<div class="active-chart-time"><span>${activeTimeValid ? mvEscape(this._clock(a.active_started_at,currentDay)) : "–"}</span><span>${t("activeNow")}</span></div><div class="hint active-graph-hint">${t("powerGraphGap")}</div>` : ""}</div>` : `<div class="hint active-no-sensor">${t("powerGraphMissing")}</div>`;
-    const activeControl=active ? `<div class="active-header"><div class="sectionhead">${t("activeHeating")}</div><span class="active-live"><i></i>${t("on")}</span></div><div class="active-remaining">${mvEscape(activeRemaining)}</div>${activeTimeline}${activeMetrics}<div class="quick-actions active-actions"><button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button>${e.extend_30 ? extend : ""}${!activeTimeValid && Number.isFinite(endMsActive) ? `<span class="hint">${t("plannedStop")} ${mvEscape(this._date(a.active_until))}</span>` : ""}</div>${e.extend_30 && a.can_extend === false && remainingExtension!==null && remainingExtension<=0 ? `<div class="hint active-limit">${t("extendLimit")}</div>` : e.extend_30 && a.can_extend === true && remainingExtension!==null && remainingExtension<30 ? `<div class="hint active-limit">${t("maximumStop")} ${mvEscape(this._clock(a.active_max_until,currentDay))}.</div>` : ""}${graph}` : "";
+    const chart=activeTimeValid && chartStart<=activeNowMs ? this._activeGraph(a.active_power_samples,chartStart,axisEndActive,activeNowMs,endMsActive) : `<div class="active-graph-empty">${t("powerGraphEmpty")}</div>`;
+    const graph=showPower ? `<div class="active-graph-section"><button id="active-graph-toggle" class="active-graph-toggle" aria-expanded="${this._showPowerGraph}"><span>${t("powerGraph")}</span><span>${this._showPowerGraph ? t("hide") : t("show")} ${this._showPowerGraph ? "⌃" : "⌄"}</span></button>${this._showPowerGraph ? `${chart}<div class="hint active-graph-hint">${t("powerGraphGap")}</div>` : ""}</div>` : `<div class="hint active-no-sensor">${t("powerGraphMissing")}</div>`;
+    const activeControl=active ? `<div class="active-header"><div class="sectionhead">${t("activeHeating")}</div><span class="active-live"><i></i>${t("on")}</span></div><div class="active-remaining">${mvEscape(activeRemaining)}</div>${activeTimeline}${graph}${activeMetrics}<div class="quick-actions active-actions"><button id="stop-now" ${!stopOk || this._pending ? "disabled" : ""}>${t("stopNow")}</button>${e.extend_30 ? extend : ""}${!activeTimeValid && Number.isFinite(endMsActive) ? `<span class="hint">${t("plannedStop")} ${mvEscape(this._date(a.active_until))}</span>` : ""}</div>${e.extend_30 && a.can_extend === false && remainingExtension!==null && remainingExtension<=0 ? `<div class="hint active-limit">${t("extendLimit")}</div>` : e.extend_30 && a.can_extend === true && remainingExtension!==null && remainingExtension<30 ? `<div class="hint active-limit">${t("maximumStop")} ${mvEscape(this._clock(a.active_max_until,currentDay))}.</div>` : ""}` : "";
     const calendar = h.states[e.calendar];
     const calendarOk = mvUsable(status) && calendar && calendar.state !== "unavailable";
     const windowData=mvUsable(status) ? ((this._windowOffset || this._windowOverride) ? this._windowEvents : a.schedule_7_days) : null;
@@ -987,26 +1023,30 @@ class MotorvarmareCard extends HTMLElement {
         .active-live{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:color-mix(in srgb,var(--primary-color) 14%,transparent);color:var(--primary-color);font-size:11px;font-weight:700}
         .active-live i{width:7px;height:7px;border-radius:50%;background:currentColor}
         .active-remaining{font-size:22px;line-height:1.2;font-weight:700;margin:10px 0 14px}
-        .active-timeline{padding:12px 13px 10px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color)}
+        .active-timeline{padding:0}
         .active-times{display:flex;justify-content:space-between;gap:12px}.active-times>div{display:grid;gap:3px}.active-times>div:last-child{text-align:right}
-        .active-times span,.active-progress-caption{font-size:11px;line-height:1.3;color:var(--secondary-text-color)}
+        .active-times span,.active-progress-caption,.active-axis{font-size:11px;line-height:1.3;color:var(--secondary-text-color)}
         .active-times strong{font-size:14px;color:var(--primary-text-color)}
-        .active-progress{position:relative;height:7px;margin:16px 5px 8px;border-radius:20px;background:var(--divider-color)}
-        .active-progress-fill{height:100%;border-radius:inherit;background:var(--primary-color)}
-        .active-progress-dot{position:absolute;top:50%;width:13px;height:13px;transform:translate(-50%,-50%);border-radius:50%;background:var(--primary-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary-color) 20%,transparent)}
-        .active-progress-caption{position:relative;height:14px}.active-progress-now{position:absolute;transform:translateX(-50%);white-space:nowrap}
+        .active-plot{margin-left:var(--active-axis-gutter,50px);min-width:0}.active-axis{position:relative;height:15px;margin:16px 0 6px;white-space:nowrap}.active-tick{position:absolute;top:0}.active-axis .tick-0{left:0}.active-axis .tick-1{left:50%;transform:translateX(-50%)}.active-axis .tick-2{right:0}
+        .active-progress{position:relative;height:32px;box-shadow:inset 0 0 0 1px var(--divider-color);border-radius:7px;background:repeating-linear-gradient(to right,transparent 0,transparent calc(25% - 1px),var(--divider-color) calc(25% - 1px),var(--divider-color) 25%),var(--secondary-background-color);overflow:hidden;box-sizing:border-box}
+        .active-progress-fill{height:100%;background:color-mix(in srgb,var(--primary-color) 68%,var(--card-background-color));border-radius:6px 0 0 6px}
+        .active-bar-label{position:absolute;inset:0;display:flex;align-items:center;padding-left:8px;color:var(--primary-text-color);font-size:11px;font-weight:650;pointer-events:none}
+        .active-progress-dot{position:absolute;top:0;bottom:0;width:2px;transform:translateX(-50%);background:var(--primary-color);box-shadow:0 0 0 1px var(--card-background-color)}
+        .active-stop-marker{position:absolute;top:0;bottom:0;width:0;transform:translateX(-50%);border-left:2px dashed var(--error-color,#db4437);pointer-events:none}.active-stop-explanation{font-size:11px;color:var(--secondary-text-color);margin-top:3px}.active-stop-explanation:before{content:"";display:inline-block;height:10px;margin-right:5px;border-left:2px dashed var(--error-color,#db4437)}
+        .active-progress-caption{position:relative;height:17px;margin-top:3px}.active-progress-now{position:absolute;transform:translateX(-50%);white-space:nowrap}
         .active-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;margin-top:12px}
         .active-metrics>div{display:grid;gap:4px;padding:11px 12px;border-radius:10px;background:var(--secondary-background-color);min-width:0}
         .active-metrics span{font-size:11px;line-height:1.3;color:var(--secondary-text-color)}.active-metrics strong{font-size:16px;overflow-wrap:anywhere}
         .active-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.active-actions button{min-height:44px}.active-actions .active-extend{background:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:650}
         .active-limit,.active-no-sensor,.active-no-time,.active-measurement-since{margin-top:9px;line-height:1.4}
-        .active-graph-section{margin-top:14px;padding-top:7px;border-top:1px solid var(--divider-color)}
+        .active-graph-section{margin-top:0}
         .active-graph-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;min-height:44px;padding:4px 0;font-weight:650;color:var(--primary-text-color)}
         .active-graph-toggle span:last-child{font-size:12px;color:var(--primary-color);font-weight:500;white-space:nowrap}
         .active-chart{display:flex;gap:8px;align-items:stretch;height:100px;padding:5px 0 0}
-        .active-chart-scale{min-width:42px;display:flex;flex-direction:column;justify-content:space-between;padding:0 0 3px;font-size:10px;color:var(--secondary-text-color);white-space:nowrap}
-        .active-chart svg{display:block;flex:1;min-width:0;width:100%;height:100%;overflow:visible}.active-chart line{stroke:var(--divider-color);stroke-width:1;vector-effect:non-scaling-stroke}.active-chart path{stroke:var(--primary-color);stroke-width:2.5;fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}.active-chart circle{fill:var(--primary-color);vector-effect:non-scaling-stroke}
-        .active-chart-time{display:flex;justify-content:space-between;margin:4px 0 0 50px;font-size:11px;color:var(--secondary-text-color)}
+        .active-chart-scale{width:42px;flex:0 0 42px;display:flex;flex-direction:column;justify-content:space-between;padding:0 0 3px;font-size:10px;color:var(--secondary-text-color);white-space:nowrap;overflow:hidden}
+        .active-chart-plot{position:relative;flex:1;min-width:0;background:repeating-linear-gradient(to right,transparent 0,transparent calc(25% - 1px),var(--divider-color) calc(25% - 1px),var(--divider-color) 25%)}
+        .active-chart svg{display:block;width:100%;height:100%;overflow:visible}.active-chart line{stroke:var(--divider-color);stroke-width:1;vector-effect:non-scaling-stroke}.active-chart path{stroke:var(--primary-color);stroke-width:2.5;fill:none;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}.active-chart circle{fill:var(--primary-color);vector-effect:non-scaling-stroke}
+        .active-chart-now{position:absolute;top:0;bottom:0;width:1px;transform:translateX(-50%);background:var(--primary-color);opacity:.65;pointer-events:none}
         .active-graph-hint{font-size:11px;margin-top:8px;line-height:1.35}.active-graph-empty{padding:15px 0 4px;color:var(--secondary-text-color);font-size:12px}
         .cal-event.is-past,.mobile-event.is-past{background:var(--secondary-background-color);border-left-color:var(--secondary-text-color);color:var(--primary-text-color)}
         .cal-agenda li.is-past strong{color:var(--secondary-text-color)}
@@ -1019,6 +1059,7 @@ class MotorvarmareCard extends HTMLElement {
         .calendar-modal .calendar-history-day{display:flex}
         @container (max-width:420px){.mobile-event{flex-wrap:wrap}.mobile-event>div{flex:1 0 100%}.mobile-event [data-edit-index]{margin-left:auto}}
         @container (max-width:340px){.control-panel,.main-panel:not([hidden]){padding:12px}.calendar-range{min-width:125px}.head{flex-wrap:wrap}.headtext{flex:1 1 120px}}
+        @container (max-width:400px){.active-axis.active-ambiguous .tick-1{display:none}}
         @media(max-width:350px){.wrap{padding:15px}}
       </style>
       <ha-card><div class="wrap">

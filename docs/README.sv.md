@@ -18,7 +18,7 @@ För att se flera bilar tillsammans, lägg till **Motorvärmare – översikt** 
 
 ## Användning
 
-När integrationen styr en värmning visar kortet en tidslinje med återstående tid. Du kan förlänga den pågående körningen med upp till 30 minuter per tryck inom integrationens fyratimmarsgräns och temperaturregler; kalendern ändras inte. Med en valfri effektsensor kan du öppna effektgrafen och se värden över tid, uppskattad energi och tillgänglig uppskattad kostnad. Saknade mätvärden visas som luckor. Efter en omstart märks en ny mätperiod med sin starttid. Vyn kräver version 0.11.0 eller senare av integrationen.
+När integrationen styr en värmning visar kortet en tidslinje från start till planerat stopp och återstående tid. Om värmaren fortfarande är på efter planerat stopp fortsätter tidslinjen och markerar det planerade stoppet separat. Du kan förlänga den pågående körningen med upp till 30 minuter per tryck inom integrationens fyratimmarsgräns och temperaturregler; kalendern ändras inte. Med en valfri effektsensor visas effektgrafen på samma tidsaxel, tillsammans med uppskattad energi och tillgänglig uppskattad kostnad. Framtida tid har inga mätvärden och saknade mätvärden visas som luckor. Efter en omstart märks en ny mätperiod med sin starttid. Vyn kräver version 0.11.0 eller senare av integrationen.
 
 Överst ser du nästa avresa och, när schemat ger underlag, en tidslinje med beräknad start, avresa och stopp. Utetemperatur och gångtid visas också, och gångtiden anges i timmar och minuter. Växla mellan **Kalender**, **Energi** och **Inställningar**. Under **Fler åtgärder** kan du bland annat hoppa över en avresa eller pausa; aktiva pauser och larm är fortsatt synliga.
 
