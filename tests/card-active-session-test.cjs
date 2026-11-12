@@ -41,8 +41,21 @@ async function main() {
       await page.setViewportSize({width,height:900});
       const timeline=await card.locator('.active-progress').boundingBox(), plot=await card.locator('.active-chart-plot').boundingBox();
       assert.ok(Math.abs(timeline.x-plot.x)<1 && Math.abs(timeline.width-plot.width)<1,`Timeline and graph share the exact axis at ${width}px`);
+      const fullWidth=await card.locator('.active-timeline').boundingBox();
+      assert.ok(Math.abs(timeline.x-fullWidth.x)<1 && Math.abs(timeline.width-fullWidth.width)<1,`Timeline fills the available card width at ${width}px`);
+      const topLabel=await card.locator('.active-chart-scale span').first().boundingBox(), bottomLabel=await card.locator('.active-chart-scale span').last().boundingBox();
+      assert.ok(topLabel.y+topLabel.height<=plot.y+1 && bottomLabel.y>=plot.y+plot.height-1,`Power labels remain legible outside the full-width plot at ${width}px`);
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal page overflow');
     }
+    // Even unusually large power readings must not truncate the y-axis label.
+    await page.setViewportSize({width:320,height:900});
+    await page.evaluate(()=>{const a=window.hass.states['sensor.car'].attributes;window.originalGraphPower=a.active_power_samples[0].watts;a.active_power_samples[0].watts=1234567;document.querySelector('motorvarmare-card').hass={...window.hass};});
+    const largeLabel=card.locator('.active-chart-scale span').first();
+    assert.match(await largeLabel.innerText(),/1\s?234\s?600 W/,'The full power value is displayed');
+    const largeBox=await largeLabel.boundingBox(), chartBox=await card.locator('.active-chart').boundingBox();
+    assert.ok(largeBox.x>=chartBox.x && largeBox.x+largeBox.width<=chartBox.x+chartBox.width,'Large power labels fit the card');
+    await page.evaluate(()=>{window.hass.states['sensor.car'].attributes.active_power_samples[0].watts=window.originalGraphPower;document.querySelector('motorvarmare-card').hass={...window.hass};});
+    await page.setViewportSize({width:390,height:900});
     await page.evaluate(()=>{window.hass.states['sensor.car'].attributes.active_power_samples.push({at:'2026-11-12T08:40:00Z',watts:999});document.querySelector('motorvarmare-card').hass={...window.hass}});
     assert.equal(await card.locator('.active-chart path').getAttribute('d'),graphPath,'A future sample is never drawn as observed power');
     await page.evaluate(()=>{window.hass.states['sensor.car'].attributes.active_measurement_started_at=null;document.querySelector('motorvarmare-card').hass={...window.hass}});
